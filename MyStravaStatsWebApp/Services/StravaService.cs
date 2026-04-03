@@ -242,6 +242,7 @@ public sealed class StravaService(
 
         for (var page = 1; ; page++)
         {
+            // https://developers.strava.com/docs/reference/#api-Activities-getLoggedInAthleteActivities
             var pageActivities = await GetFromApiAsync<List<StravaActivity>>(
                 $"https://www.strava.com/api/v3/athlete/activities?after={after}&page={page}&per_page={pageSize}",
                 accessToken,
@@ -252,7 +253,8 @@ public sealed class StravaService(
                 break;
             }
 
-            activities.AddRange(pageActivities);
+            // Romet się nie liczy hehe
+            activities.AddRange(pageActivities.Where(activity => activity.AverageSpeed <= 35));
 
             if (pageActivities.Count < pageSize)
             {

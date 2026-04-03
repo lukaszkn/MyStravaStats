@@ -156,6 +156,9 @@ internal sealed class StravaActivity
     [JsonPropertyName("type")]
     public string? Type { get; set; }
 
+    [JsonPropertyName("average_speed")]
+    public double AverageSpeed { get; set; }
+
     [JsonPropertyName("distance")]
     public double Distance { get; set; }
 
