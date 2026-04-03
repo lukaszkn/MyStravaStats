@@ -1,0 +1,296 @@
+﻿@page "/"
+@attribute [StreamRendering]
+@using System.Globalization
+@using MyStravaStatsWebApp.Models
+@using MyStravaStatsWebApp.Services
+@inject StravaService StravaService
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>Strava stats</PageTitle>
+
+<h1>Strava stats</h1>
+
+@if (dashboard is null)
+{
+    <p><em>Loading Strava dashboard...</em></p>
+}
+else
+{
+    <div class="strava-dashboard">
+        <section class="strava-hero card shadow-sm border-0 mb-4">
+            <div class="card-body p-4">
+                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+                    <div>
+                        <p class="text-uppercase text-body-secondary fw-semibold small mb-2">Current year overview</p>
+                        <h2 class="h4 mb-2">Monthly Strava totals for @dashboard.Year</h2>
+                        <p class="mb-0 text-body-secondary">
+                            Authorize Strava to load all activities after @yearStartText and group totals by activity type and gear.
+                        </p>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        @if (dashboard.IsAuthenticated)
+                        {
+                            <a class="btn btn-outline-secondary" href="/strava/logout" target="_self">Disconnect</a>
+                        }
+                        else
+                        {
+                            <a class="btn btn-primary" href="/strava/login" target="_self">Connect with Strava</a>
+                        }
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        @if (!string.IsNullOrWhiteSpace(dashboard.ErrorMessage))
+        {
+            <div class="alert alert-danger" role="alert">
+                @dashboard.ErrorMessage
+            </div>
+        }
+
+        @if (dashboard.IsAuthenticated)
+        {
+            <section class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-body">
+                            <p class="text-body-secondary small text-uppercase fw-semibold mb-2">Athlete</p>
+                            <div class="fs-5 fw-semibold">@dashboard.AthleteName</div>
+                            <div class="text-body-secondary">@dashboard.ActivityCount activities</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-body">
+                            <p class="text-body-secondary small text-uppercase fw-semibold mb-2">Total distance</p>
+                            <div class="fs-5 fw-semibold">@FormatDistance(dashboard.OverallTotals.DistanceMeters)</div>
+                            <div class="text-body-secondary">Since @yearStartText</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-body">
+                            <p class="text-body-secondary small text-uppercase fw-semibold mb-2">Moving time / elevation</p>
+                            <div class="fs-5 fw-semibold">@FormatMovingTime(dashboard.OverallTotals.MovingTimeSeconds)</div>
+                            <div class="text-body-secondary">@FormatElevation(dashboard.OverallTotals.ElevationGainMeters)</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        }
+
+        @if (!dashboard.IsConfigured)
+        {
+            <div class="alert alert-warning" role="alert">
+                Add the Strava environment variables before using the dashboard.
+            </div>
+        }
+        else if (!dashboard.IsAuthenticated)
+        {
+            <div class="alert alert-info" role="alert">
+                Connect your Strava account to populate the dashboard.
+            </div>
+        }
+        else if (dashboard.ActivityCount == 0)
+        {
+            <div class="alert alert-secondary" role="alert">
+                No Strava activities were found for @dashboard.Year.
+            </div>
+        }
+        else
+        {
+            <section class="card shadow-sm border-0 mb-4">
+                <div class="card-body p-4">
+                    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 mb-3">
+                        <div>
+                            <h2 class="h5 mb-1">Monthly totals by activity type</h2>
+                            <p class="text-body-secondary mb-0">One row per month, with each activity type shown as its own set of columns.</p>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover align-middle mb-0 stats-pivot-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col" rowspan="2">Month</th>
+                                    @for (var groupIndex = 0; groupIndex < dashboard.ActivityTypeTable.GroupNames.Count; groupIndex++)
+                                    {
+                                        var groupName = dashboard.ActivityTypeTable.GroupNames[groupIndex];
+                                        <th scope="colgroup" colspan="2" class="@($"text-center pivot-group-header {GetGroupAccentClass(groupIndex)}")">@groupName</th>
+                                    }
+                                </tr>
+                                <tr>
+                                    @for (var groupIndex = 0; groupIndex < dashboard.ActivityTypeTable.GroupNames.Count; groupIndex++)
+                                    {
+                                        var accentClass = GetGroupAccentClass(groupIndex);
+                                        <th scope="col" class="@($"text-end pivot-group-subheader {accentClass}")">Distance</th>
+                                        <th scope="col" class="@($"text-end pivot-group-subheader {accentClass}")">Moving time</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in dashboard.ActivityTypeTable.Rows)
+                                {
+                                    <tr>
+                                        <td>@FormatMonth(row.Month)</td>
+                                        @for (var groupIndex = 0; groupIndex < dashboard.ActivityTypeTable.GroupNames.Count; groupIndex++)
+                                        {
+                                            var groupName = dashboard.ActivityTypeTable.GroupNames[groupIndex];
+                                            var totals = GetGroupTotals(row, groupName);
+                                            var accentClass = GetGroupAccentClass(groupIndex);
+                                            <td class="@($"text-end pivot-group-cell {accentClass}")">@FormatDistance(totals.DistanceMeters)</td>
+                                            <td class="@($"text-end pivot-group-cell {accentClass}")">
+                                                <div>@FormatMovingTime(totals.MovingTimeSeconds)</div>
+                                                <div>@FormatElevation(totals.ElevationGainMeters)</div>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr class="pivot-totals-row fw-semibold">
+                                    <th scope="row" class="pivot-total-label">Year total</th>
+                                    @for (var groupIndex = 0; groupIndex < dashboard.ActivityTypeTable.GroupNames.Count; groupIndex++)
+                                    {
+                                        var groupName = dashboard.ActivityTypeTable.GroupNames[groupIndex];
+                                        var totals = GetGroupTotals(dashboard.ActivityTypeTable.TotalsByGroup, groupName);
+                                        var accentClass = GetGroupAccentClass(groupIndex);
+                                        <td class="@($"text-end pivot-group-cell {accentClass}")">@FormatDistance(totals.DistanceMeters)</td>
+                                        <td class="@($"text-end pivot-group-cell {accentClass}")">
+                                            <div>@FormatMovingTime(totals.MovingTimeSeconds)</div>
+                                            <div>@FormatElevation(totals.ElevationGainMeters)</div>
+                                        </td>
+                                    }
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card shadow-sm border-0">
+                <div class="card-body p-4">
+                    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 mb-3">
+                        <div>
+                            <h2 class="h5 mb-1">Monthly totals by gear</h2>
+                            <p class="text-body-secondary mb-0">One row per month, with each gear shown as its own set of columns.</p>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover align-middle mb-0 stats-pivot-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col" rowspan="2">Month</th>
+                                    @for (var groupIndex = 0; groupIndex < dashboard.GearTable.GroupNames.Count; groupIndex++)
+                                    {
+                                        var groupName = dashboard.GearTable.GroupNames[groupIndex];
+                                        <th scope="colgroup" colspan="2" class="@($"text-center pivot-group-header {GetGroupAccentClass(groupIndex)}")">@groupName</th>
+                                    }
+                                </tr>
+                                <tr>
+                                    @for (var groupIndex = 0; groupIndex < dashboard.GearTable.GroupNames.Count; groupIndex++)
+                                    {
+                                        var accentClass = GetGroupAccentClass(groupIndex);
+                                        <th scope="col" class="@($"text-end pivot-group-subheader {accentClass}")">Distance</th>
+                                        <th scope="col" class="@($"text-end pivot-group-subheader {accentClass}")">Moving time</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in dashboard.GearTable.Rows)
+                                {
+                                    <tr>
+                                        <td>@FormatMonth(row.Month)</td>
+                                        @for (var groupIndex = 0; groupIndex < dashboard.GearTable.GroupNames.Count; groupIndex++)
+                                        {
+                                            var groupName = dashboard.GearTable.GroupNames[groupIndex];
+                                            var totals = GetGroupTotals(row, groupName);
+                                            var accentClass = GetGroupAccentClass(groupIndex);
+                                            <td class="@($"text-end pivot-group-cell {accentClass}")">@FormatDistance(totals.DistanceMeters)</td>
+                                            <td class="@($"text-end pivot-group-cell {accentClass}")">
+                                                <div>@FormatMovingTime(totals.MovingTimeSeconds)</div>
+                                                <div>@FormatElevation(totals.ElevationGainMeters)</div>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr class="pivot-totals-row fw-semibold">
+                                    <th scope="row" class="pivot-total-label">Year total</th>
+                                    @for (var groupIndex = 0; groupIndex < dashboard.GearTable.GroupNames.Count; groupIndex++)
+                                    {
+                                        var groupName = dashboard.GearTable.GroupNames[groupIndex];
+                                        var totals = GetGroupTotals(dashboard.GearTable.TotalsByGroup, groupName);
+                                        var accentClass = GetGroupAccentClass(groupIndex);
+                                        <td class="@($"text-end pivot-group-cell {accentClass}")">@FormatDistance(totals.DistanceMeters)</td>
+                                        <td class="@($"text-end pivot-group-cell {accentClass}")">
+                                            <div>@FormatMovingTime(totals.MovingTimeSeconds)</div>
+                                            <div>@FormatElevation(totals.ElevationGainMeters)</div>
+                                        </td>
+                                    }
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        }
+    </div>
+}
+
+@code {
+    private readonly string yearStartText = $"{DateTime.UtcNow.Year}-01-01";
+    private StravaDashboardState? dashboard;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var httpContext = HttpContextAccessor.HttpContext;
+        var errorMessage = httpContext?.Request.Query["error"].ToString();
+        dashboard = await StravaService.GetDashboardStateAsync(
+            errorMessage,
+            httpContext?.RequestAborted ?? CancellationToken.None);
+    }
+
+    private static string FormatMonth(int month)
+    {
+        return CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month);
+    }
+
+    private static string FormatDistance(double meters)
+    {
+        return $"{meters / 1000d:N1} km";
+    }
+
+    private static string FormatElevation(double meters)
+    {
+        return $"{meters:N0} m";
+    }
+
+    private static string FormatMovingTime(int movingTimeSeconds)
+    {
+        var time = TimeSpan.FromSeconds(movingTimeSeconds);
+        return $"{(int)time.TotalHours:D2}:{time.Minutes:D2}:{time.Seconds:D2}";
+    }
+
+    private static DashboardTotals GetGroupTotals(MonthlyStatsTableRow row, string groupName)
+    {
+        return GetGroupTotals(row.GroupTotals, groupName);
+    }
+
+    private static DashboardTotals GetGroupTotals(IReadOnlyDictionary<string, DashboardTotals> totalsByGroup, string groupName)
+    {
+        return totalsByGroup.TryGetValue(groupName, out var totals)
+            ? totals
+            : new DashboardTotals();
+    }
+
+    private static string GetGroupAccentClass(int groupIndex)
+    {
+        return $"group-accent-{groupIndex % 6}";
+    }
+}

@@ -1,0 +1,95 @@
+.strava-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.strava-hero {
+    background: linear-gradient(135deg, rgba(252, 76, 2, 0.12), rgba(13, 110, 253, 0.06));
+}
+
+.table td,
+.table th {
+    white-space: nowrap;
+}
+
+.stats-pivot-table {
+    --pivot-accent-text: var(--bs-emphasis-color);
+    --pivot-accent-bg-strong: rgba(13, 110, 253, 0.16);
+    --pivot-accent-bg-soft: rgba(13, 110, 253, 0.08);
+    --pivot-accent-border: rgba(13, 110, 253, 0.22);
+}
+
+.stats-pivot-table .pivot-group-header,
+.stats-pivot-table .pivot-group-subheader,
+.stats-pivot-table .pivot-group-cell {
+    background-color: var(--pivot-accent-bg-soft);
+    border-left: 1px solid var(--pivot-accent-border);
+    border-right: 1px solid var(--pivot-accent-border);
+}
+
+.stats-pivot-table .pivot-group-header {
+    background-color: var(--pivot-accent-bg-strong);
+    color: var(--pivot-accent-text);
+}
+
+.stats-pivot-table .pivot-group-subheader {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+.stats-pivot-table .pivot-group-cell {
+    font-variant-numeric: tabular-nums;
+}
+
+.stats-pivot-table .pivot-totals-row > th,
+.stats-pivot-table .pivot-totals-row > td {
+    border-top: 2px solid var(--bs-border-color);
+}
+
+.stats-pivot-table .pivot-total-label {
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.06);
+}
+
+.stats-pivot-table .group-accent-0 {
+    --pivot-accent-bg-strong: rgba(13, 110, 253, 0.18);
+    --pivot-accent-bg-soft: rgba(13, 110, 253, 0.08);
+    --pivot-accent-border: rgba(13, 110, 253, 0.24);
+}
+
+.stats-pivot-table .group-accent-1 {
+    --pivot-accent-bg-strong: rgba(25, 135, 84, 0.18);
+    --pivot-accent-bg-soft: rgba(25, 135, 84, 0.08);
+    --pivot-accent-border: rgba(25, 135, 84, 0.24);
+}
+
+.stats-pivot-table .group-accent-2 {
+    --pivot-accent-bg-strong: rgba(111, 66, 193, 0.18);
+    --pivot-accent-bg-soft: rgba(111, 66, 193, 0.08);
+    --pivot-accent-border: rgba(111, 66, 193, 0.24);
+}
+
+.stats-pivot-table .group-accent-3 {
+    --pivot-accent-bg-strong: rgba(214, 51, 132, 0.18);
+    --pivot-accent-bg-soft: rgba(214, 51, 132, 0.08);
+    --pivot-accent-border: rgba(214, 51, 132, 0.24);
+}
+
+.stats-pivot-table .group-accent-4 {
+    --pivot-accent-bg-strong: rgba(253, 126, 20, 0.18);
+    --pivot-accent-bg-soft: rgba(253, 126, 20, 0.08);
+    --pivot-accent-border: rgba(253, 126, 20, 0.24);
+}
+
+.stats-pivot-table .group-accent-5 {
+    --pivot-accent-bg-strong: rgba(32, 201, 151, 0.18);
+    --pivot-accent-bg-soft: rgba(32, 201, 151, 0.08);
+    --pivot-accent-border: rgba(32, 201, 151, 0.24);
+}
+
+@media (max-width: 767.98px) {
+    .table td,
+    .table th {
+        white-space: normal;
+    }
+}

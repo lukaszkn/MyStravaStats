@@ -1,0 +1,217 @@
+@page "/counter"
+@attribute [StreamRendering]
+@using System.Globalization
+@using MyStravaStatsWebApp.Models
+@using MyStravaStatsWebApp.Services
+@inject StatsBlobStorageService StatsBlobStorageService
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>Bęcki</PageTitle>
+
+<h1>Bęcki</h1>
+
+@if (competitionTable is null)
+{
+    <p><em>Loading competition table...</em></p>
+}
+else
+{
+    <div class="competition-page">
+        @if (!competitionTable.IsConfigured)
+        {
+            <div class="alert alert-warning" role="alert">
+                Set <code>AZURE_STATS_BLOB_STORAGE_CONNECTION_STRING</code> to enable the Bęcki competition table.
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(competitionTable.ErrorMessage))
+        {
+            <div class="alert alert-danger" role="alert">
+                @competitionTable.ErrorMessage
+            </div>
+        }
+        else if (competitionTable.Athletes.Count == 0)
+        {
+            <div class="alert alert-secondary" role="alert">
+                No athlete snapshots were found in the stats blob storage for @competitionTable.Year.
+            </div>
+        }
+        else
+        {
+            <section class="competition-card card shadow-sm border-0 mb-4">
+                <div class="card-body competition-card-body">
+                    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-3">
+                        <div>
+                            <p class="text-uppercase text-body-secondary fw-semibold small mb-2">Standings</p>
+                            <h2 class="h5 mb-1">Bęcki competition table</h2>
+                            <p class="text-body-secondary mb-0">
+                                Monthly distance race, ordered by yearly total.
+                            </p>
+                        </div>
+
+                        <div class="competition-summary-badge">
+                            @GetCompetitionLeaderSummary(competitionTable)
+                        </div>
+                    </div>
+
+                    <div class="table-responsive competition-table-container">
+                        <table class="table table-hover align-middle mb-0 competition-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col" class="competition-month-heading">
+                                        <span class="competition-label-desktop">Miesiąc</span>
+                                        <span class="competition-label-mobile">Mies.</span>
+                                    </th>
+                                    @foreach (var athlete in competitionTable.Athletes)
+                                    {
+                                        <th scope="col" class="@GetCompetitionHeaderClass(athlete)">
+                                            <div class="competition-header-stack">
+                                                <div class="d-flex align-items-center justify-content-between gap-2">
+                                                    <span class="competition-rank-badge">#@athlete.Rank</span>
+                                                    @if (athlete.IsLeader)
+                                                    {
+                                                        <span class="competition-crown" aria-hidden="true">👑</span>
+                                                    }
+                                                 </div>
+                                                 <div class="competition-athlete-name">@athlete.AthleteName</div>
+                                                 <div class="competition-athlete-updated">@FormatGeneratedAtUtc(athlete.GeneratedAtUtc)</div>
+                                                 <div class="competition-athlete-total">@FormatDistance(athlete.YearlyDistanceMeters)</div>
+                                             </div>
+                                         </th>
+                                     }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in competitionTable.Rows)
+                                {
+                                    <tr>
+                                        <th scope="row" class="competition-month">
+                                            <span class="competition-label-desktop">@FormatMonth(row.Month)</span>
+                                            <span class="competition-label-mobile">@FormatMonthShort(row.Month)</span>
+                                        </th>
+                                        @foreach (var athlete in competitionTable.Athletes)
+                                        {
+                                            var distance = GetCompetitionDistance(row, athlete.AthleteId);
+                                            <td class="@GetCompetitionCellClass(row, athlete)">
+                                                <span class="competition-cell-value">@FormatDistance(distance)</span>
+                                                @if (distance > 0d && row.LeadingAthleteIds.Contains(athlete.AthleteId))
+                                                {
+                                                    <span class="competition-cell-note">monthly lead</span>
+                                                }
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th scope="row" class="competition-footer-label">
+                                        <span class="competition-label-desktop">Year total</span>
+                                        <span class="competition-label-mobile">Total</span>
+                                    </th>
+                                    @foreach (var athlete in competitionTable.Athletes)
+                                    {
+                                        <td class="@GetCompetitionFooterClass(athlete)">@FormatDistance(athlete.YearlyDistanceMeters)</td>
+                                    }
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        }
+    </div>
+}
+
+@code {
+    private AthleteCompetitionTable? competitionTable;
+
+    protected override async Task OnInitializedAsync()
+    {
+        competitionTable = await StatsBlobStorageService.GetCompetitionTableAsync(
+            DateTime.UtcNow.Year,
+            HttpContextAccessor.HttpContext?.RequestAborted ?? CancellationToken.None);
+    }
+
+    private static string FormatMonth(int month)
+    {
+        return CultureInfo.GetCultureInfo("pl-PL").DateTimeFormat.GetMonthName(month);
+    }
+
+    private static string FormatMonthShort(int month)
+    {
+        return CultureInfo.GetCultureInfo("pl-PL").DateTimeFormat.GetAbbreviatedMonthName(month);
+    }
+
+    private static string FormatDistance(double meters)
+    {
+        return $"{meters / 1000d:N1} km";
+    }
+
+    private static string FormatGeneratedAtUtc(DateTimeOffset generatedAtUtc)
+    {
+        return generatedAtUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+    }
+
+    private static double GetCompetitionDistance(AthleteCompetitionMonthRow row, long athleteId)
+    {
+        return row.DistancesByAthleteId.TryGetValue(athleteId, out var distance)
+            ? distance
+            : 0d;
+    }
+
+    private static string GetCompetitionHeaderClass(AthleteCompetitionColumn athlete)
+    {
+        return athlete.IsLeader
+            ? "competition-header-cell competition-column--leader"
+            : "competition-header-cell";
+    }
+
+    private static string GetCompetitionCellClass(AthleteCompetitionMonthRow row, AthleteCompetitionColumn athlete)
+    {
+        var classes = new List<string> { "competition-distance-cell" };
+        var distance = GetCompetitionDistance(row, athlete.AthleteId);
+
+        if (athlete.IsLeader)
+        {
+            classes.Add("competition-cell--year-leader");
+        }
+
+        if (row.LeadingAthleteIds.Contains(athlete.AthleteId))
+        {
+            classes.Add("competition-cell--month-leader");
+        }
+
+        if (distance <= 0d)
+        {
+            classes.Add("competition-cell--empty");
+        }
+
+        return string.Join(" ", classes);
+    }
+
+    private static string GetCompetitionFooterClass(AthleteCompetitionColumn athlete)
+    {
+        return athlete.IsLeader
+            ? "competition-distance-cell competition-footer-cell competition-cell--year-leader fw-semibold"
+            : "competition-distance-cell competition-footer-cell fw-semibold";
+    }
+
+    private static string GetCompetitionLeaderSummary(AthleteCompetitionTable table)
+    {
+        var leaders = table.Athletes
+            .Where(athlete => athlete.IsLeader)
+            .ToArray();
+
+        if (leaders.Length == 0)
+        {
+            return "Waiting for the first uploaded leader";
+        }
+
+        var leaderNames = string.Join(", ", leaders.Select(athlete => athlete.AthleteName));
+        var leaderDistance = FormatDistance(leaders[0].YearlyDistanceMeters);
+
+        return leaders.Length == 1
+            ? $"👑 {leaderNames} leads with {leaderDistance}"
+            : $"👑 Tie at the top: {leaderNames} with {leaderDistance}";
+    }
+}
