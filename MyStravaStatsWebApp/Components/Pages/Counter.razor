@@ -75,6 +75,15 @@ else
                                                  <div class="competition-athlete-name">@athlete.AthleteName</div>
                                                  <div class="competition-athlete-updated">@FormatGeneratedAtUtc(athlete.GeneratedAtUtc)</div>
                                                  <div class="competition-athlete-total">@FormatDistance(athlete.YearlyDistanceMeters)</div>
+                                                 @if (athlete.YearlyActivityTypeDistancesMeters.Count > 0)
+                                                 {
+                                                     <div class="competition-athlete-activity-types">
+                                                         @foreach (var activityTypeDistance in athlete.YearlyActivityTypeDistancesMeters)
+                                                         {
+                                                             <div>@FormatActivityTypeDistance(activityTypeDistance)</div>
+                                                         }
+                                                     </div>
+                                                 }
                                              </div>
                                          </th>
                                      }
@@ -145,6 +154,23 @@ else
     private static string FormatDistance(double meters)
     {
         return $"{meters / 1000d:N1} km";
+    }
+
+    private static string FormatActivityTypeDistance(KeyValuePair<string, double> activityTypeDistance)
+    {
+        return $"{FormatDistance(activityTypeDistance.Value).Replace(" km", " ")} {FormatActivityTypeName(activityTypeDistance.Key)}";
+    }
+
+    private static string FormatActivityTypeName(string activityType)
+    {
+        var normalized = activityType.Trim().ToLower(CultureInfo.CurrentCulture);
+
+        return normalized switch
+        {
+            "ride" => "bike",
+            "e bike ride" or "ebikeride" => "e-bike",
+            _ => normalized.Replace("e bike", "e-bike", StringComparison.CurrentCulture)
+        };
     }
 
     private static string FormatGeneratedAtUtc(DateTimeOffset generatedAtUtc)

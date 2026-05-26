@@ -158,6 +158,7 @@ public sealed class StatsBlobStorageService
                 ResolveAthleteName(document),
                 document.GeneratedAtUtc,
                 document.DashboardState.OverallTotals.DistanceMeters,
+                ResolveYearlyActivityTypeDistances(document.DashboardState),
                 ResolveMonthlyDistances(document.DashboardState)))
             .OrderByDescending(entry => entry.YearlyDistanceMeters)
             .ThenBy(entry => entry.AthleteName, StringComparer.CurrentCultureIgnoreCase)
@@ -183,6 +184,7 @@ public sealed class StatsBlobStorageService
                 AthleteName = athlete.AthleteName,
                 GeneratedAtUtc = athlete.GeneratedAtUtc,
                 YearlyDistanceMeters = athlete.YearlyDistanceMeters,
+                YearlyActivityTypeDistancesMeters = athlete.YearlyActivityTypeDistancesMeters,
                 Rank = currentRank,
                 IsLeader = leaderDistanceMeters > 0d && AreDistancesEqual(athlete.YearlyDistanceMeters, leaderDistanceMeters)
             });
@@ -247,6 +249,16 @@ public sealed class StatsBlobStorageService
         return monthlyDistances;
     }
 
+    private static IReadOnlyDictionary<string, double> ResolveYearlyActivityTypeDistances(StravaDashboardState dashboardState)
+    {
+        return dashboardState.ActivityTypeTable.TotalsByGroup
+            .Where(pair => pair.Value.DistanceMeters > 0d)
+            .ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.DistanceMeters,
+                StringComparer.Ordinal);
+    }
+
     private static string ResolveAthleteName(AthleteStatsBlobDocument document)
     {
         if (!string.IsNullOrWhiteSpace(document.AthleteName))
@@ -272,5 +284,6 @@ public sealed class StatsBlobStorageService
         string AthleteName,
         DateTimeOffset GeneratedAtUtc,
         double YearlyDistanceMeters,
+        IReadOnlyDictionary<string, double> YearlyActivityTypeDistancesMeters,
         IReadOnlyDictionary<int, double> MonthlyDistances);
 }

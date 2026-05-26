@@ -94,6 +94,12 @@
     color: var(--bs-secondary-color);
 }
 
+.competition-table .competition-athlete-activity-types {
+    font-size: 0.7rem;
+    line-height: 1.25;
+    color: var(--bs-tertiary-color);
+}
+
 .competition-table .competition-month-heading,
 .competition-table .competition-month,
 .competition-table .competition-footer-label {
@@ -186,6 +192,7 @@
 
     .competition-table .competition-athlete-updated,
     .competition-table .competition-athlete-total,
+    .competition-table .competition-athlete-activity-types,
     .competition-table .competition-cell-note {
         font-size: 0.58rem;
     }

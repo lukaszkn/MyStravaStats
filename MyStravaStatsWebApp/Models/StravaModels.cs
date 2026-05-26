@@ -61,6 +61,8 @@ public sealed class AthleteCompetitionColumn
 
     public double YearlyDistanceMeters { get; init; }
 
+    public IReadOnlyDictionary<string, double> YearlyActivityTypeDistancesMeters { get; init; } = new Dictionary<string, double>();
+
     public int Rank { get; init; }
 
     public bool IsLeader { get; init; }
