@@ -1,11 +1,12 @@
 using System.Text.Json;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using MyStravaStatsWebApp.Models;
-using MyStravaStatsWebApp.Options;
+using MyStravaStats.Core.Models;
+using MyStravaStats.Core.Options;
 
-namespace MyStravaStatsWebApp.Services;
+namespace MyStravaStats.Core.Services;
 
 public sealed class StatsBlobStorageService
 {
@@ -96,23 +97,11 @@ public sealed class StatsBlobStorageService
             throw new InvalidOperationException("Azure stats blob storage is not configured.");
         }
 
-        if (dashboardState.AthleteId is null)
-        {
-            throw new InvalidOperationException("Athlete id is required to upload athlete-specific stats.");
-        }
-
-        var document = new AthleteStatsBlobDocument
-        {
-            AthleteId = dashboardState.AthleteId.Value,
-            AthleteName = dashboardState.AthleteName,
-            Year = dashboardState.Year,
-            GeneratedAtUtc = DateTimeOffset.UtcNow,
-            DashboardState = dashboardState
-        };
+        var document = AthleteStatsBlobDocument.FromDashboardState(dashboardState, DateTimeOffset.UtcNow);
 
         await _containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
 
-        var blobClient = _containerClient.GetBlobClient($"{dashboardState.AthleteId.Value}.json");
+        var blobClient = _containerClient.GetBlobClient($"{document.AthleteId}.json");
         var payload = BinaryData.FromObjectAsJson(document, JsonOptions);
 
         await blobClient.UploadAsync(payload, overwrite: true, cancellationToken);
@@ -125,7 +114,7 @@ public sealed class StatsBlobStorageService
 
         _logger.LogInformation(
             "Uploaded dashboard stats for athlete {AthleteId} to blob {BlobName}.",
-            dashboardState.AthleteId.Value,
+            document.AthleteId,
             blobClient.Name);
     }
 
@@ -263,12 +252,12 @@ public sealed class StatsBlobStorageService
     {
         if (!string.IsNullOrWhiteSpace(document.AthleteName))
         {
-            return document.AthleteName.Trim();
+            return document.AthleteName;
         }
 
         if (!string.IsNullOrWhiteSpace(document.DashboardState.AthleteName))
         {
-            return document.DashboardState.AthleteName.Trim();
+            return document.DashboardState.AthleteName;
         }
 
         return $"Athlete {document.AthleteId}";

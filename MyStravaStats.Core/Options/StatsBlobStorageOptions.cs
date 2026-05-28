@@ -1,4 +1,4 @@
-namespace MyStravaStatsWebApp.Options;
+namespace MyStravaStats.Core.Options;
 
 public sealed class StatsBlobStorageOptions
 {

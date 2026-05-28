@@ -1,0 +1,12 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "AutoSyncSchedule": "0 0 */4 * * *",
+    "STRAVA_CLIENT_ID": "your-client-id",
+    "STRAVA_CLIENT_SECRET": "your-client-secret",
+    "AZURE_STATS_BLOB_STORAGE_CONNECTION_STRING": "your-storage-connection-string",
+    "AUTO_SYNC_TOKEN_ENCRYPTION_KEY": "base64-32-byte-key"
+  }
+}

@@ -1,7 +1,7 @@
 ﻿@page "/"
 @attribute [StreamRendering]
 @using System.Globalization
-@using MyStravaStatsWebApp.Models
+@using MyStravaStats.Core.Models
 @using MyStravaStatsWebApp.Services
 @inject StravaService StravaService
 @inject IHttpContextAccessor HttpContextAccessor
@@ -28,17 +28,51 @@ else
                         </p>
                     </div>
 
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="strava-actions">
                         @if (dashboard.IsAuthenticated)
                         {
-                            <a class="btn btn-outline-secondary" href="/strava/logout" target="_self">Disconnect</a>
+                            <div class="auto-sync-status">
+                                <span class="@GetAutoSyncStatusClass(dashboard)"></span>
+                                <span>@GetAutoSyncStatusText(dashboard)</span>
+                            </div>
+
+                            <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+                                @if (dashboard.IsAutoSyncEnabled)
+                                {
+                                    <form action="/strava/auto-sync/stop" method="post">
+                                        <button class="btn btn-outline-danger" type="submit">Stop auto sync</button>
+                                    </form>
+                                }
+                                else if (dashboard.IsAutoSyncConfigured)
+                                {
+                                    <form action="/strava/login" method="get">
+                                        <input type="hidden" name="autoSync" value="true" />
+                                        <button class="btn btn-outline-primary" type="submit">Enable auto sync</button>
+                                    </form>
+                                }
+
+                                <a class="btn btn-outline-secondary" href="/strava/logout" target="_self">Disconnect</a>
+                            </div>
                         }
                         else
                         {
-                            <a class="btn btn-primary" href="/strava/login" target="_self">Connect with Strava</a>
+                            <form class="connect-form" action="/strava/login" method="get">
+                                <div class="form-check mb-0">
+                                    <input class="form-check-input" type="checkbox" name="autoSync" value="true" id="autoSyncConnect" disabled="@(!dashboard.IsAutoSyncConfigured)" />
+                                    <label class="form-check-label" for="autoSyncConnect">Auto sync (4h)</label>
+                                </div>
+                                <button class="btn btn-primary" type="submit">Connect with Strava</button>
+                            </form>
                         }
                     </div>
                 </div>
+
+                @if (!dashboard.IsAutoSyncConfigured)
+                {
+                    <p class="auto-sync-config-note mb-0">
+                        Auto sync needs Azure blob storage and AUTO_SYNC_TOKEN_ENCRYPTION_KEY before it can be enabled.
+                    </p>
+                }
             </div>
         </section>
 
@@ -292,5 +326,42 @@ else
     private static string GetGroupAccentClass(int groupIndex)
     {
         return $"group-accent-{groupIndex % 6}";
+    }
+
+    private static string GetAutoSyncStatusText(StravaDashboardState dashboardState)
+    {
+        if (!dashboardState.IsAutoSyncConfigured)
+        {
+            return "Auto sync unavailable";
+        }
+
+        if (!dashboardState.IsAutoSyncEnabled)
+        {
+            return "Auto sync off";
+        }
+
+        if (dashboardState.AutoSyncRequiresReauthorization)
+        {
+            return "Auto sync needs reconnect";
+        }
+
+        if (dashboardState.AutoSyncLastSyncedAtUtc is { } lastSyncedAtUtc)
+        {
+            return $"Auto sync on - last run {lastSyncedAtUtc.ToLocalTime():g}";
+        }
+
+        return "Auto sync on";
+    }
+
+    private static string GetAutoSyncStatusClass(StravaDashboardState dashboardState)
+    {
+        if (!dashboardState.IsAutoSyncConfigured || !dashboardState.IsAutoSyncEnabled)
+        {
+            return "auto-sync-dot auto-sync-dot-off";
+        }
+
+        return dashboardState.AutoSyncRequiresReauthorization
+            ? "auto-sync-dot auto-sync-dot-warning"
+            : "auto-sync-dot auto-sync-dot-on";
     }
 }

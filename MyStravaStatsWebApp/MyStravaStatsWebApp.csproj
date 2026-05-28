@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Azure.Storage.Blobs" Version="12.22.2" />
+    <ProjectReference Include="..\MyStravaStats.Core\MyStravaStats.Core.csproj" />
   </ItemGroup>
 
 </Project>

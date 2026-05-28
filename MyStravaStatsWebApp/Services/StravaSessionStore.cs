@@ -1,12 +1,13 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
-using MyStravaStatsWebApp.Models;
+using MyStravaStats.Core.Models;
 
 namespace MyStravaStatsWebApp.Services;
 
 public sealed class StravaSessionStore
 {
     private const string AuthSessionKey = "Strava.Auth";
+    private const string AutoSyncRequestedKey = "Strava.AutoSyncRequested";
     private const string OAuthStateKey = "Strava.OAuthState";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -29,6 +30,24 @@ public sealed class StravaSessionStore
         httpContext.Session.Remove(AuthSessionKey);
     }
 
+    public void SaveAutoSyncRequested(HttpContext httpContext, bool autoSyncRequested)
+    {
+        httpContext.Session.SetString(AutoSyncRequestedKey, autoSyncRequested ? "true" : "false");
+    }
+
+    public bool GetAutoSyncRequested(HttpContext httpContext)
+    {
+        return string.Equals(
+            httpContext.Session.GetString(AutoSyncRequestedKey),
+            "true",
+            StringComparison.Ordinal);
+    }
+
+    public void ClearAutoSyncRequested(HttpContext httpContext)
+    {
+        httpContext.Session.Remove(AutoSyncRequestedKey);
+    }
+
     public void SaveState(HttpContext httpContext, string state)
     {
         httpContext.Session.SetString(OAuthStateKey, state);
@@ -47,6 +66,7 @@ public sealed class StravaSessionStore
     public void ClearAll(HttpContext httpContext)
     {
         ClearState(httpContext);
+        ClearAutoSyncRequested(httpContext);
         ClearAuth(httpContext);
     }
 }
