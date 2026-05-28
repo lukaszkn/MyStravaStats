@@ -37,6 +37,8 @@ else
         }
         else
         {
+            var activityTypeRowCount = GetCompetitionActivityTypeRowCount(competitionTable);
+
             <section class="competition-card card shadow-sm border-0 mb-4">
                 <div class="card-body competition-card-body">
                     <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-3">
@@ -75,12 +77,16 @@ else
                                                  <div class="competition-athlete-name">@athlete.AthleteName</div>
                                                  <div class="competition-athlete-updated">@FormatGeneratedAtUtc(athlete.GeneratedAtUtc)</div>
                                                  <div class="competition-athlete-total">@FormatDistance(athlete.YearlyDistanceMeters)</div>
-                                                 @if (athlete.YearlyActivityTypeDistancesMeters.Count > 0)
+                                                 @if (activityTypeRowCount > 0)
                                                  {
                                                      <div class="competition-athlete-activity-types">
                                                          @foreach (var activityTypeDistance in athlete.YearlyActivityTypeDistancesMeters)
                                                          {
                                                              <div>@FormatActivityTypeDistance(activityTypeDistance)</div>
+                                                         }
+                                                         @for (var activityTypeIndex = athlete.YearlyActivityTypeDistancesMeters.Count; activityTypeIndex < activityTypeRowCount; activityTypeIndex++)
+                                                         {
+                                                             <div class="competition-athlete-activity-type-placeholder" aria-hidden="true">&nbsp;</div>
                                                          }
                                                      </div>
                                                  }
@@ -183,6 +189,13 @@ else
         return row.DistancesByAthleteId.TryGetValue(athleteId, out var distance)
             ? distance
             : 0d;
+    }
+
+    private static int GetCompetitionActivityTypeRowCount(AthleteCompetitionTable table)
+    {
+        return table.Athletes.Count == 0
+            ? 0
+            : table.Athletes.Max(athlete => athlete.YearlyActivityTypeDistancesMeters.Count);
     }
 
     private static string GetCompetitionHeaderClass(AthleteCompetitionColumn athlete)

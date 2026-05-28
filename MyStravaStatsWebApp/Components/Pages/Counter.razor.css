@@ -49,7 +49,6 @@
 
 .competition-table .competition-header-cell {
     min-width: 9rem;
-    vertical-align: top;
     background: rgba(13, 110, 253, 0.06);
 }
 
@@ -99,6 +98,10 @@
     font-size: 0.7rem;
     line-height: 1.25;
     color: var(--bs-tertiary-color);
+}
+
+.competition-table .competition-athlete-activity-type-placeholder {
+    visibility: hidden;
 }
 
 .competition-table .competition-month-heading,
