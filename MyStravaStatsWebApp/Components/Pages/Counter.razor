@@ -181,7 +181,7 @@ else
 
     private static string FormatGeneratedAtUtc(DateTimeOffset generatedAtUtc)
     {
-        return generatedAtUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        return generatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
     }
 
     private static double GetCompetitionDistance(AthleteCompetitionMonthRow row, long athleteId)
