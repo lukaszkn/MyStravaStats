@@ -38,6 +38,7 @@ else
         else
         {
             var activityTypeRowCount = GetCompetitionActivityTypeRowCount(competitionTable);
+            var leaderDistanceMeters = GetCompetitionLeaderDistanceMeters(competitionTable);
 
             <section class="competition-card card shadow-sm border-0 mb-4">
                 <div class="card-body competition-card-body">
@@ -76,7 +77,13 @@ else
                                                  </div>
                                                  <div class="competition-athlete-name">@athlete.AthleteName</div>
                                                  <div class="competition-athlete-updated">@FormatGeneratedAtUtc(athlete.GeneratedAtUtc)</div>
-                                                 <div class="competition-athlete-total">@FormatDistance(athlete.YearlyDistanceMeters)</div>
+                                                 <div class="competition-athlete-total">
+                                                     @FormatDistance(athlete.YearlyDistanceMeters)
+                                                     @if (TryGetDistanceBehindLeader(athlete, leaderDistanceMeters, out var distanceBehindLeaderMeters))
+                                                     {
+                                                         <span class="competition-athlete-distance-behind">&nbsp;(@FormatDistance(distanceBehindLeaderMeters))</span>
+                                                     }
+                                                 </div>
                                                  @if (activityTypeRowCount > 0)
                                                  {
                                                      <div class="competition-athlete-activity-types">
@@ -196,6 +203,23 @@ else
         return table.Athletes.Count == 0
             ? 0
             : table.Athletes.Max(athlete => athlete.YearlyActivityTypeDistancesMeters.Count);
+    }
+
+    private static double GetCompetitionLeaderDistanceMeters(AthleteCompetitionTable table)
+    {
+        return table.Athletes.Count == 0
+            ? 0d
+            : table.Athletes.Max(athlete => athlete.YearlyDistanceMeters);
+    }
+
+    private static bool TryGetDistanceBehindLeader(
+        AthleteCompetitionColumn athlete,
+        double leaderDistanceMeters,
+        out double distanceBehindLeaderMeters)
+    {
+        distanceBehindLeaderMeters = athlete.YearlyDistanceMeters - leaderDistanceMeters;
+
+        return !athlete.IsLeader && distanceBehindLeaderMeters < -0.01d;
     }
 
     private static string GetCompetitionHeaderClass(AthleteCompetitionColumn athlete)

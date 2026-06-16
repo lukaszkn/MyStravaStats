@@ -94,6 +94,10 @@
     color: var(--bs-secondary-color);
 }
 
+.competition-table .competition-athlete-distance-behind {
+    color: var(--bs-danger);
+}
+
 .competition-table .competition-athlete-activity-types {
     font-size: 0.7rem;
     line-height: 1.25;
