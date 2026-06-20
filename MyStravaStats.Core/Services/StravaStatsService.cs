@@ -19,6 +19,7 @@ public sealed class StravaStatsService(
         var activities = await stravaApiClient.GetActivitiesAsync(authSession.AccessToken, yearStartUtc, cancellationToken);
         activities = activities
             .Where(activity => GetActivityDate(activity).Year == year)
+            .OrderBy(GetActivityDate)
             .ToList();
 
         var gearNames = await stravaApiClient.GetGearNamesAsync(authSession.AccessToken, activities, cancellationToken);
@@ -40,7 +41,8 @@ public sealed class StravaStatsService(
                 ElevationGainMeters = activities.Sum(activity => activity.TotalElevationGain)
             },
             ActivityTypeTable = BuildTable(activities, activity => HumanizeActivityType(GetActivityType(activity))),
-            GearTable = BuildTable(activities, activity => ResolveGearDisplay(activity.GearId, gearNames))
+            GearTable = BuildTable(activities, activity => ResolveGearDisplay(activity.GearId, gearNames)),
+            TrendPoints = BuildTrendPoints(activities)
         };
     }
 
@@ -132,6 +134,47 @@ public sealed class StravaStatsService(
             GroupNames = groupNames,
             TotalsByGroup = totalsByGroup,
             Rows = rows
+        };
+    }
+
+    public static IReadOnlyList<AthleteTrendPoint> BuildTrendPoints(IEnumerable<StravaActivity> activities)
+    {
+        var points = new List<AthleteTrendPoint>();
+        DateOnly? currentDay = null;
+        DateTimeOffset currentDayRecordedAt = default;
+        double totalMeters = 0d;
+        double currentDayTotalMeters = 0d;
+
+        foreach (var activity in activities.OrderBy(GetActivityDate))
+        {
+            var activityDate = GetActivityDate(activity);
+            var activityDay = DateOnly.FromDateTime(activityDate.Date);
+
+            if (currentDay is not null && activityDay != currentDay.Value)
+            {
+                points.Add(CreateTrendPoint(currentDayRecordedAt, currentDayTotalMeters));
+            }
+
+            totalMeters += activity.Distance;
+            currentDay = activityDay;
+            currentDayRecordedAt = activityDate;
+            currentDayTotalMeters = totalMeters;
+        }
+
+        if (currentDay is not null)
+        {
+            points.Add(CreateTrendPoint(currentDayRecordedAt, currentDayTotalMeters));
+        }
+
+        return points;
+    }
+
+    private static AthleteTrendPoint CreateTrendPoint(DateTimeOffset recordedAt, double totalMeters)
+    {
+        return new AthleteTrendPoint
+        {
+            RecordedAt = recordedAt,
+            TotalKilometers = totalMeters / 1000d
         };
     }
 

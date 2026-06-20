@@ -12,6 +12,10 @@ Relevant implementation details:
   - `STRAVA_CLIENT_SECRET`
 - Athlete stats export uses Azure Blob Storage and loads its connection string from:
   - `AZURE_STATS_BLOB_STORAGE_CONNECTION_STRING`
+- The Trend page navigation link is shown only when the web app has:
+  - `ENABLE_TREND_CHART=1`
+  - `ENABLE_TREND_CHART=true`
+  - `ENABLE_TREND_CHART=yes`
 - Auto sync stores encrypted Strava refresh tokens in the same storage account and loads its encryption key from:
   - `AUTO_SYNC_TOKEN_ENCRYPTION_KEY`
 - The Azure Function timer schedule is loaded from:
@@ -198,6 +202,7 @@ az functionapp config appsettings set \
 The Function uses the isolated worker model on Azure Functions v4. For .NET 10 on Linux, use Flex Consumption, Premium, App Service, or another plan that supports the .NET 10 isolated stack rather than classic Linux Consumption.
 
 The Function reads opted-in users from the `auto-sync-users` blob container, decrypts their saved Strava tokens, refreshes tokens when needed, and overwrites the existing `stats/{athleteId}.json` dashboard snapshot in the same format the Home page writes.
+Manual web sync and Function auto sync also overwrite current-year trend files under `stats/trends/{year}/{athleteId}.json`. Set `ENABLE_TREND_CHART=1` on the web app to show the Trend page in the navigation menu.
 
 For local Function testing, copy `MyStravaStats.AutoSyncFunction/local.settings.sample.json` to `local.settings.json` and fill in real values. The real `local.settings.json` file is ignored by git.
 

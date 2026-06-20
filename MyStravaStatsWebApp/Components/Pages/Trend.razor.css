@@ -1,0 +1,148 @@
+.trend-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.trend-card {
+    background: linear-gradient(135deg, rgba(13, 110, 253, 0.12), rgba(25, 135, 84, 0.05));
+}
+
+.trend-leader-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.7rem 1rem;
+    border-radius: 999px;
+    background: rgba(25, 135, 84, 0.12);
+    border: 1px solid rgba(25, 135, 84, 0.26);
+    color: var(--bs-emphasis-color);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.trend-chart-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.trend-chart {
+    display: block;
+    width: 100%;
+    min-width: 760px;
+    height: auto;
+    background: rgba(var(--bs-body-bg-rgb), 0.78);
+    border: 1px solid rgba(var(--bs-emphasis-color-rgb), 0.08);
+    border-radius: 8px;
+}
+
+.trend-axis,
+.trend-x-tick {
+    stroke: rgba(var(--bs-emphasis-color-rgb), 0.32);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+
+.trend-grid-line {
+    stroke: rgba(var(--bs-emphasis-color-rgb), 0.1);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+
+.trend-axis-label {
+    fill: var(--bs-secondary-color);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.trend-line {
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 3;
+    vector-effect: non-scaling-stroke;
+}
+
+.trend-endpoint-guide {
+    stroke-dasharray: 3 4;
+    stroke-opacity: 0.5;
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+
+.trend-endpoint-marker {
+    stroke: var(--bs-body-bg);
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+}
+
+.trend-endpoint-label {
+    font-size: 0.74rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.trend-endpoint-label-leader {
+    font-weight: 800;
+}
+
+.trend-legend {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: 0.6rem;
+    margin-top: 1rem;
+}
+
+.trend-legend-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.7rem;
+    border-radius: 8px;
+    background: rgba(var(--bs-body-bg-rgb), 0.74);
+    border: 1px solid rgba(var(--bs-emphasis-color-rgb), 0.08);
+    font-variant-numeric: tabular-nums;
+}
+
+.trend-legend-swatch {
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 999px;
+    background: var(--trend-color);
+}
+
+.trend-legend-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-weight: 700;
+}
+
+.trend-legend-total {
+    font-weight: 700;
+}
+
+.trend-legend-gap {
+    color: var(--bs-danger);
+    font-weight: 700;
+}
+
+@media (max-width: 767.98px) {
+    .trend-leader-badge {
+        border-radius: 1rem;
+    }
+
+    .trend-chart {
+        min-width: 680px;
+    }
+
+    .trend-legend {
+        grid-template-columns: 1fr;
+    }
+
+    .trend-legend-item {
+        grid-template-columns: auto 1fr auto;
+    }
+
+    .trend-legend-gap {
+        grid-column: 3;
+    }
+}

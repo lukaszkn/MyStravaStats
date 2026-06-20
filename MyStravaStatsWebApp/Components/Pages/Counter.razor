@@ -75,7 +75,7 @@ else
                                                         <span class="competition-crown" aria-hidden="true">👑</span>
                                                     }
                                                  </div>
-                                                 <div class="competition-athlete-name">@athlete.AthleteName</div>
+                                                 <div class="competition-athlete-name">@AthleteDisplayNameFormatter.GetFirstName(athlete.AthleteName)</div>
                                                  <div class="competition-athlete-updated">@FormatGeneratedAtUtc(athlete.GeneratedAtUtc)</div>
                                                  <div class="competition-athlete-total">
                                                      @FormatDistance(athlete.YearlyDistanceMeters)
@@ -270,7 +270,7 @@ else
             return "Waiting for the first uploaded leader";
         }
 
-        var leaderNames = string.Join(", ", leaders.Select(athlete => athlete.AthleteName));
+        var leaderNames = string.Join(", ", leaders.Select(athlete => AthleteDisplayNameFormatter.GetFirstName(athlete.AthleteName)));
         var leaderDistance = FormatDistance(leaders[0].YearlyDistanceMeters);
 
         return leaders.Length == 1

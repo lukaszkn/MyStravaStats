@@ -35,6 +35,8 @@ public sealed class StravaDashboardState
     public MonthlyStatsTable ActivityTypeTable { get; init; } = new();
 
     public MonthlyStatsTable GearTable { get; init; } = new();
+
+    public IReadOnlyList<AthleteTrendPoint> TrendPoints { get; init; } = Array.Empty<AthleteTrendPoint>();
 }
 
 public sealed class AthleteStatsBlobDocument
@@ -106,6 +108,94 @@ public sealed class AthleteCompetitionMonthRow
     public IReadOnlyDictionary<long, double> DistancesByAthleteId { get; init; } = new Dictionary<long, double>();
 
     public IReadOnlyList<long> LeadingAthleteIds { get; init; } = Array.Empty<long>();
+}
+
+public sealed class AthleteTrendBlobDocument
+{
+    public long AthleteId { get; init; }
+
+    public string? AthleteName { get; init; }
+
+    public int Year { get; init; }
+
+    public DateTimeOffset GeneratedAtUtc { get; init; }
+
+    public IReadOnlyList<AthleteTrendPoint> Points { get; init; } = Array.Empty<AthleteTrendPoint>();
+
+    public static AthleteTrendBlobDocument FromDashboardState(
+        StravaDashboardState dashboardState,
+        DateTimeOffset generatedAtUtc)
+    {
+        if (dashboardState.AthleteId is null)
+        {
+            throw new InvalidOperationException("Athlete id is required to create athlete trend data.");
+        }
+
+        return new AthleteTrendBlobDocument
+        {
+            AthleteId = dashboardState.AthleteId.Value,
+            AthleteName = dashboardState.AthleteName,
+            Year = dashboardState.Year,
+            GeneratedAtUtc = generatedAtUtc,
+            Points = NormalizeTrendPoints(dashboardState)
+        };
+    }
+
+    private static IReadOnlyList<AthleteTrendPoint> NormalizeTrendPoints(StravaDashboardState dashboardState)
+    {
+        var points = dashboardState.TrendPoints
+            .OrderBy(point => point.RecordedAt)
+            .ToArray();
+        if (points.Length == 0)
+        {
+            return points;
+        }
+
+        var expectedTotalKilometers = dashboardState.OverallTotals.DistanceMeters / 1000d;
+        if (Math.Abs(points[^1].TotalKilometers - expectedTotalKilometers) < 0.0001d)
+        {
+            return points;
+        }
+
+        points[^1] = new AthleteTrendPoint
+        {
+            RecordedAt = points[^1].RecordedAt,
+            TotalKilometers = expectedTotalKilometers
+        };
+
+        return points;
+    }
+}
+
+public sealed class AthleteTrendChart
+{
+    public bool IsConfigured { get; init; }
+
+    public int Year { get; init; }
+
+    public string? ErrorMessage { get; init; }
+
+    public IReadOnlyList<AthleteTrendSeries> Athletes { get; init; } = Array.Empty<AthleteTrendSeries>();
+}
+
+public sealed class AthleteTrendSeries
+{
+    public long AthleteId { get; init; }
+
+    public string AthleteName { get; init; } = string.Empty;
+
+    public DateTimeOffset GeneratedAtUtc { get; init; }
+
+    public string Color { get; init; } = string.Empty;
+
+    public IReadOnlyList<AthleteTrendPoint> Points { get; init; } = Array.Empty<AthleteTrendPoint>();
+}
+
+public sealed class AthleteTrendPoint
+{
+    public DateTimeOffset RecordedAt { get; init; }
+
+    public double TotalKilometers { get; init; }
 }
 
 public sealed class DashboardTotals

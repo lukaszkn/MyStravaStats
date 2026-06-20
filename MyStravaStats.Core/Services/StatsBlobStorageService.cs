@@ -12,6 +12,20 @@ public sealed class StatsBlobStorageService
 {
     private const string ContainerName = "stats";
 
+    private static readonly string[] TrendPalette =
+    [
+        "#0d6efd",
+        "#dc3545",
+        "#198754",
+        "#fd7e14",
+        "#6f42c1",
+        "#20c997",
+        "#d63384",
+        "#0dcaf0",
+        "#ffc107",
+        "#6610f2"
+    ];
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
@@ -61,7 +75,7 @@ public sealed class StatsBlobStorageService
 
             await foreach (var blobItem in _containerClient.GetBlobsAsync(cancellationToken: cancellationToken))
             {
-                if (!blobItem.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                if (!IsDashboardSnapshotBlobName(blobItem.Name))
                 {
                     continue;
                 }
@@ -90,6 +104,77 @@ public sealed class StatsBlobStorageService
         }
     }
 
+    public async Task<AthleteTrendChart> GetTrendChartAsync(int year, CancellationToken cancellationToken)
+    {
+        if (_containerClient is null)
+        {
+            return new AthleteTrendChart
+            {
+                IsConfigured = false,
+                Year = year
+            };
+        }
+
+        try
+        {
+            var containerExists = await _containerClient.ExistsAsync(cancellationToken);
+            if (!containerExists.Value)
+            {
+                return new AthleteTrendChart
+                {
+                    IsConfigured = true,
+                    Year = year
+                };
+            }
+
+            var documents = new List<AthleteTrendBlobDocument>();
+
+            await foreach (var blobItem in _containerClient.GetBlobsAsync(cancellationToken: cancellationToken))
+            {
+                if (IsDashboardSnapshotBlobName(blobItem.Name))
+                {
+                    var snapshotDocument = await DownloadAthleteStatsDocumentAsync(blobItem.Name, cancellationToken);
+                    if (snapshotDocument is null || snapshotDocument.Year != year || snapshotDocument.DashboardState.TrendPoints.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    documents.Add(AthleteTrendBlobDocument.FromDashboardState(
+                        snapshotDocument.DashboardState,
+                        snapshotDocument.GeneratedAtUtc));
+                    continue;
+                }
+
+                if (!blobItem.Name.StartsWith(GetTrendBlobPrefix(year), StringComparison.Ordinal) ||
+                    !blobItem.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var trendDocument = await DownloadAthleteTrendDocumentAsync(blobItem.Name, cancellationToken);
+                if (trendDocument is null || trendDocument.Year != year || trendDocument.AthleteId <= 0 || trendDocument.Points.Count == 0)
+                {
+                    continue;
+                }
+
+                documents.Add(trendDocument);
+            }
+
+            return BuildTrendChart(year, documents);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unable to read athlete trend data from blob storage.");
+
+            return new AthleteTrendChart
+            {
+                IsConfigured = true,
+                Year = year,
+                ErrorMessage = $"Unable to load trend stats: {ex.Message}"
+            };
+        }
+    }
+
     public async Task UploadDashboardStateAsync(StravaDashboardState dashboardState, CancellationToken cancellationToken)
     {
         if (_containerClient is null)
@@ -97,25 +182,27 @@ public sealed class StatsBlobStorageService
             throw new InvalidOperationException("Azure stats blob storage is not configured.");
         }
 
-        var document = AthleteStatsBlobDocument.FromDashboardState(dashboardState, DateTimeOffset.UtcNow);
+        var generatedAtUtc = DateTimeOffset.UtcNow;
+        var document = AthleteStatsBlobDocument.FromDashboardState(dashboardState, generatedAtUtc);
+        var trendDocument = AthleteTrendBlobDocument.FromDashboardState(dashboardState, generatedAtUtc);
 
         await _containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
 
-        var blobClient = _containerClient.GetBlobClient($"{document.AthleteId}.json");
-        var payload = BinaryData.FromObjectAsJson(document, JsonOptions);
+        var dashboardBlobName = $"{document.AthleteId}.json";
+        var trendBlobName = GetTrendBlobName(trendDocument.Year, trendDocument.AthleteId);
 
-        await blobClient.UploadAsync(payload, overwrite: true, cancellationToken);
-        await blobClient.SetHttpHeadersAsync(
-            new BlobHttpHeaders
-            {
-                ContentType = "application/json"
-            },
-            cancellationToken: cancellationToken);
+        await UploadJsonAsync(dashboardBlobName, document, cancellationToken);
+        await UploadJsonAsync(trendBlobName, trendDocument, cancellationToken);
 
         _logger.LogInformation(
             "Uploaded dashboard stats for athlete {AthleteId} to blob {BlobName}.",
             document.AthleteId,
-            blobClient.Name);
+            dashboardBlobName);
+
+        _logger.LogInformation(
+            "Uploaded trend stats for athlete {AthleteId} to blob {BlobName}.",
+            trendDocument.AthleteId,
+            trendBlobName);
     }
 
     private async Task<AthleteStatsBlobDocument?> DownloadAthleteStatsDocumentAsync(string blobName, CancellationToken cancellationToken)
@@ -130,6 +217,22 @@ public sealed class StatsBlobStorageService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Skipping unreadable athlete stats blob {BlobName}.", blobName);
+            return null;
+        }
+    }
+
+    private async Task<AthleteTrendBlobDocument?> DownloadAthleteTrendDocumentAsync(string blobName, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var blobClient = _containerClient!.GetBlobClient(blobName);
+            var download = await blobClient.DownloadContentAsync(cancellationToken);
+
+            return download.Value.Content.ToObjectFromJson<AthleteTrendBlobDocument>(JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Skipping unreadable athlete trend blob {BlobName}.", blobName);
             return null;
         }
     }
@@ -224,6 +327,40 @@ public sealed class StatsBlobStorageService
         };
     }
 
+    private static AthleteTrendChart BuildTrendChart(int year, IEnumerable<AthleteTrendBlobDocument> documents)
+    {
+        var athletes = documents
+            .Where(document => document.AthleteId > 0 && document.Points.Count > 0)
+            .GroupBy(document => document.AthleteId)
+            .Select(group => group
+                .OrderByDescending(document => document.GeneratedAtUtc)
+                .ThenByDescending(document => document.Points
+                    .OrderBy(point => point.RecordedAt)
+                    .Last()
+                    .TotalKilometers)
+                .First())
+            .Select(document => new AthleteTrendSeries
+            {
+                AthleteId = document.AthleteId,
+                AthleteName = ResolveAthleteName(document),
+                GeneratedAtUtc = document.GeneratedAtUtc,
+                Color = GetTrendColor(document.AthleteId),
+                Points = document.Points
+                    .OrderBy(point => point.RecordedAt)
+                    .ToArray()
+            })
+            .OrderByDescending(series => series.Points.Last().TotalKilometers)
+            .ThenBy(series => series.AthleteName, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+        return new AthleteTrendChart
+        {
+            IsConfigured = true,
+            Year = year,
+            Athletes = athletes
+        };
+    }
+
     private static IReadOnlyDictionary<int, double> ResolveMonthlyDistances(StravaDashboardState dashboardState)
     {
         var monthlyDistances = dashboardState.ActivityTypeTable.Rows.ToDictionary(
@@ -261,6 +398,64 @@ public sealed class StatsBlobStorageService
         }
 
         return $"Athlete {document.AthleteId}";
+    }
+
+    private static string ResolveAthleteName(AthleteTrendBlobDocument document)
+    {
+        if (!string.IsNullOrWhiteSpace(document.AthleteName))
+        {
+            return document.AthleteName;
+        }
+
+        return $"Athlete {document.AthleteId}";
+    }
+
+    public static bool IsDashboardSnapshotBlobName(string blobName)
+    {
+        if (!blobName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || blobName.Contains('/'))
+        {
+            return false;
+        }
+
+        var athleteIdText = Path.GetFileNameWithoutExtension(blobName);
+        return long.TryParse(athleteIdText, out var athleteId) && athleteId > 0;
+    }
+
+    public static string GetTrendColor(long athleteId)
+    {
+        var normalizedAthleteId = athleteId < 0
+            ? (ulong)(-(athleteId + 1)) + 1
+            : (ulong)athleteId;
+        var paletteIndex = (int)(normalizedAthleteId % (ulong)TrendPalette.Length);
+
+        return TrendPalette[paletteIndex];
+    }
+
+    private async Task UploadJsonAsync<T>(
+        string blobName,
+        T document,
+        CancellationToken cancellationToken)
+    {
+        var blobClient = _containerClient!.GetBlobClient(blobName);
+        var payload = BinaryData.FromObjectAsJson(document, JsonOptions);
+
+        await blobClient.UploadAsync(payload, overwrite: true, cancellationToken);
+        await blobClient.SetHttpHeadersAsync(
+            new BlobHttpHeaders
+            {
+                ContentType = "application/json"
+            },
+            cancellationToken: cancellationToken);
+    }
+
+    private static string GetTrendBlobPrefix(int year)
+    {
+        return $"trends/{year}/";
+    }
+
+    private static string GetTrendBlobName(int year, long athleteId)
+    {
+        return $"{GetTrendBlobPrefix(year)}{athleteId}.json";
     }
 
     private static bool AreDistancesEqual(double left, double right)

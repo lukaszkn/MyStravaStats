@@ -12,6 +12,158 @@ namespace MyStravaStats.Tests;
 public sealed class StravaStatsServiceTests
 {
     [Fact]
+    public void BuildTrendPointsSortsActivitiesAndStoresOnePointPerActivityDay()
+    {
+        var points = StravaStatsService.BuildTrendPoints(
+        [
+            new StravaActivity
+            {
+                Distance = 5_000d,
+                StartDate = new DateTimeOffset(2026, 1, 3, 6, 0, 0, TimeSpan.Zero),
+                StartDateLocal = new DateTimeOffset(2026, 1, 3, 7, 0, 0, TimeSpan.FromHours(1))
+            },
+            new StravaActivity
+            {
+                Distance = 10_000d,
+                StartDate = new DateTimeOffset(2026, 1, 1, 8, 0, 0, TimeSpan.Zero),
+                StartDateLocal = new DateTimeOffset(2026, 1, 1, 9, 0, 0, TimeSpan.FromHours(1))
+            },
+            new StravaActivity
+            {
+                Distance = 2_500d,
+                StartDate = new DateTimeOffset(2026, 1, 3, 16, 0, 0, TimeSpan.Zero),
+                StartDateLocal = new DateTimeOffset(2026, 1, 3, 17, 0, 0, TimeSpan.FromHours(1))
+            },
+            new StravaActivity
+            {
+                Distance = 1_000d,
+                StartDate = new DateTimeOffset(2026, 1, 5, 8, 0, 0, TimeSpan.Zero),
+                StartDateLocal = new DateTimeOffset(2026, 1, 5, 9, 0, 0, TimeSpan.FromHours(1))
+            }
+        ]);
+
+        Assert.Collection(
+            points,
+            point =>
+            {
+                Assert.Equal(new DateTimeOffset(2026, 1, 1, 9, 0, 0, TimeSpan.FromHours(1)), point.RecordedAt);
+                Assert.Equal(10d, point.TotalKilometers, 3);
+            },
+            point =>
+            {
+                Assert.Equal(new DateTimeOffset(2026, 1, 3, 17, 0, 0, TimeSpan.FromHours(1)), point.RecordedAt);
+                Assert.Equal(17.5d, point.TotalKilometers, 3);
+            },
+            point =>
+            {
+                Assert.Equal(new DateTimeOffset(2026, 1, 5, 9, 0, 0, TimeSpan.FromHours(1)), point.RecordedAt);
+                Assert.Equal(18.5d, point.TotalKilometers, 3);
+            });
+    }
+
+    [Fact]
+    public async Task BuildDashboardStateBuildsTrendFromFilteredCurrentYearActivities()
+    {
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(request =>
+        {
+            var url = request.RequestUri?.ToString() ?? string.Empty;
+
+            if (url.StartsWith("https://www.strava.com/api/v3/athlete/activities", StringComparison.Ordinal))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "sport_type": "Ride",
+                        "type": "Ride",
+                        "average_speed": 8.2,
+                        "distance": 5000,
+                        "moving_time": 1800,
+                        "total_elevation_gain": 50,
+                        "start_date": "2026-01-03T06:00:00Z",
+                        "start_date_local": "2026-01-03T07:00:00+01:00"
+                      },
+                      {
+                        "sport_type": "Ride",
+                        "type": "Ride",
+                        "average_speed": 8.2,
+                        "distance": 10000,
+                        "moving_time": 3600,
+                        "total_elevation_gain": 100,
+                        "start_date": "2026-01-01T08:00:00Z",
+                        "start_date_local": "2026-01-01T09:00:00+01:00"
+                      },
+                      {
+                        "sport_type": "Ride",
+                        "type": "Ride",
+                        "average_speed": 8.2,
+                        "distance": 2500,
+                        "moving_time": 900,
+                        "total_elevation_gain": 25,
+                        "start_date": "2026-01-03T16:00:00Z",
+                        "start_date_local": "2026-01-03T17:00:00+01:00"
+                      },
+                      {
+                        "sport_type": "Ride",
+                        "type": "Ride",
+                        "average_speed": 36.0,
+                        "distance": 99999,
+                        "moving_time": 1,
+                        "total_elevation_gain": 1,
+                        "start_date": "2026-01-04T08:00:00Z",
+                        "start_date_local": "2026-01-04T09:00:00+01:00"
+                      },
+                      {
+                        "sport_type": "Ride",
+                        "type": "Ride",
+                        "average_speed": 8.2,
+                        "distance": 7500,
+                        "moving_time": 2400,
+                        "total_elevation_gain": 75,
+                        "start_date": "2025-12-31T08:00:00Z",
+                        "start_date_local": "2025-12-31T09:00:00+01:00"
+                      }
+                    ]
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        }));
+
+        var apiClient = new StravaApiClient(httpClient, Options.Create(new StravaOptions
+        {
+            ClientId = "client-id",
+            ClientSecret = "client-secret"
+        }));
+        var statsService = new StravaStatsService(apiClient, NullLogger<StravaStatsService>.Instance);
+
+        var dashboardState = await statsService.BuildDashboardStateAsync(new StravaAuthSession
+        {
+            AccessToken = "access-token",
+            RefreshToken = "refresh-token",
+            ExpiresAtUnixTimeSeconds = 4_102_444_800,
+            AthleteId = 123,
+            AthleteFirstName = "Ada",
+            AthleteLastName = "Lovelace"
+        }, 2026, CancellationToken.None);
+
+        Assert.Equal(3, dashboardState.ActivityCount);
+        Assert.Equal(17_500d, dashboardState.OverallTotals.DistanceMeters);
+        Assert.Collection(
+            dashboardState.TrendPoints,
+            point =>
+            {
+                Assert.Equal(new DateTimeOffset(2026, 1, 1, 9, 0, 0, TimeSpan.FromHours(1)), point.RecordedAt);
+                Assert.Equal(10d, point.TotalKilometers, 3);
+            },
+            point =>
+            {
+                Assert.Equal(new DateTimeOffset(2026, 1, 3, 17, 0, 0, TimeSpan.FromHours(1)), point.RecordedAt);
+                Assert.Equal(17.5d, point.TotalKilometers, 3);
+            });
+    }
+
+    [Fact]
     public async Task BuildDashboardStateKeepsStatsBlobDocumentShape()
     {
         using var httpClient = new HttpClient(new StubHttpMessageHandler(request =>

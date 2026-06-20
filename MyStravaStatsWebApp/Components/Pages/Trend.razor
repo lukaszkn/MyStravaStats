@@ -1,0 +1,412 @@
+@page "/trend"
+@attribute [StreamRendering]
+@using System.Globalization
+@using System.Text.Encodings.Web
+@using Microsoft.AspNetCore.Components
+@using MyStravaStats.Core.Models
+@using MyStravaStats.Core.Services
+@inject StatsBlobStorageService StatsBlobStorageService
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>Trend</PageTitle>
+
+<h1>Trend</h1>
+
+@if (trendChart is null)
+{
+    <p><em>Loading trend chart...</em></p>
+}
+else
+{
+    <div class="trend-page">
+        @if (!trendChart.IsConfigured)
+        {
+            <div class="alert alert-warning" role="alert">
+                Set <code>AZURE_STATS_BLOB_STORAGE_CONNECTION_STRING</code> to enable the trend chart.
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(trendChart.ErrorMessage))
+        {
+            <div class="alert alert-danger" role="alert">
+                @trendChart.ErrorMessage
+            </div>
+        }
+        else if (trendChart.Athletes.Count == 0)
+        {
+            <div class="alert alert-secondary" role="alert">
+                No daily trend points were found in stats blob storage for @trendChart.Year.
+            </div>
+        }
+        else
+        {
+            var geometry = BuildChartGeometry(trendChart);
+
+            <section class="trend-card card shadow-sm border-0">
+                <div class="card-body p-4">
+                    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-3">
+                        <div>
+                            <p class="text-uppercase text-body-secondary fw-semibold small mb-2">Daily cumulative race</p>
+                            <h2 class="h5 mb-1">Total distance trend for @trendChart.Year</h2>
+                            <p class="text-body-secondary mb-0">
+                                One point is stored for each athlete day that has at least one activity.
+                            </p>
+                        </div>
+
+                        <div class="trend-leader-badge">
+                            @GetLeaderSummary(geometry)
+                        </div>
+                    </div>
+
+                    <div class="trend-chart-wrap">
+                        <svg class="trend-chart" viewBox="0 0 @ChartWidth @ChartHeight" role="img" aria-labelledby="trendChartTitle trendChartDescription">
+                            <title id="trendChartTitle">Athlete cumulative distance trend</title>
+                            <desc id="trendChartDescription">Line chart showing total kilometers over time for each athlete.</desc>
+
+                            <line class="trend-axis" x1="@PlotLeft" y1="@PlotBottomY" x2="@PlotRightX" y2="@PlotBottomY" />
+                            <line class="trend-axis" x1="@PlotLeft" y1="@PlotTop" x2="@PlotLeft" y2="@PlotBottomY" />
+
+                            @foreach (var tick in geometry.YTicks)
+                            {
+                                <line class="trend-grid-line" x1="@PlotLeft" y1="@FormatSvgNumber(tick.Y)" x2="@PlotRightX" y2="@FormatSvgNumber(tick.Y)" />
+                                @SvgText("trend-axis-label trend-y-label", PlotLeft - 12, tick.Y + 4, FormatAxisKilometers(tick.Value), textAnchor: "end")
+                            }
+
+                            @foreach (var tick in geometry.XTicks)
+                            {
+                                <line class="trend-x-tick" x1="@FormatSvgNumber(tick.X)" y1="@PlotBottomY" x2="@FormatSvgNumber(tick.X)" y2="@(PlotBottomY + 6)" />
+                                @SvgText("trend-axis-label", tick.X, PlotBottomY + 26, tick.Label, textAnchor: "middle")
+                            }
+
+                            @foreach (var series in geometry.Series)
+                            {
+                                <polyline class="trend-line" points="@series.PolylinePoints" fill="none" stroke="@series.Source.Color" />
+                            }
+
+                            @foreach (var endpoint in geometry.Endpoints)
+                            {
+                                <line class="trend-endpoint-guide" x1="@FormatSvgNumber(endpoint.X)" y1="@FormatSvgNumber(endpoint.Y)" x2="@(PlotRightX + 8)" y2="@FormatSvgNumber(endpoint.LabelY)" stroke="@endpoint.Source.Color" />
+                                <circle class="trend-endpoint-marker" cx="@FormatSvgNumber(endpoint.X)" cy="@FormatSvgNumber(endpoint.Y)" r="4.5" fill="@endpoint.Source.Color" />
+                                @SvgText(GetEndpointLabelClass(endpoint), PlotRightX + 12, endpoint.LabelY + 4, GetEndpointLabel(endpoint), fill: endpoint.Source.Color)
+                            }
+                        </svg>
+                    </div>
+
+                    <div class="trend-legend" aria-label="Athlete trend totals">
+                        @foreach (var endpoint in geometry.Endpoints.OrderByDescending(endpoint => endpoint.Point.TotalKilometers))
+                        {
+                            <div class="trend-legend-item" style="@($"--trend-color: {endpoint.Source.Color}")">
+                                <span class="trend-legend-swatch" aria-hidden="true"></span>
+                                <span class="trend-legend-name">@AthleteDisplayNameFormatter.GetFirstName(endpoint.Source.AthleteName)</span>
+                                <span class="trend-legend-total">@FormatDistance(endpoint.Point.TotalKilometers)</span>
+                                @if (!endpoint.IsLeader)
+                                {
+                                    <span class="trend-legend-gap">@FormatSignedDistance(endpoint.GapKilometers)</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </section>
+        }
+    </div>
+}
+
+@code {
+    private const int ChartWidth = 980;
+    private const int ChartHeight = 460;
+    private const int PlotLeft = 64;
+    private const int PlotTop = 24;
+    private const int PlotRight = 36;
+    private const int PlotBottom = 54;
+    private const int PlotRightX = ChartWidth - PlotRight;
+    private const int PlotBottomY = ChartHeight - PlotBottom;
+    private const int PlotWidth = ChartWidth - PlotLeft - PlotRight;
+    private const int PlotHeight = ChartHeight - PlotTop - PlotBottom;
+
+    private AthleteTrendChart? trendChart;
+
+    protected override async Task OnInitializedAsync()
+    {
+        trendChart = await StatsBlobStorageService.GetTrendChartAsync(
+            DateTime.UtcNow.Year,
+            HttpContextAccessor.HttpContext?.RequestAborted ?? CancellationToken.None);
+    }
+
+    private static TrendChartGeometry BuildChartGeometry(AthleteTrendChart chart)
+    {
+        var allPoints = chart.Athletes
+            .SelectMany(series => series.Points)
+            .ToArray();
+        var firstPoint = allPoints.Min(point => point.RecordedAt);
+        var lastPoint = allPoints.Max(point => point.RecordedAt);
+        var yearStart = new DateTimeOffset(chart.Year, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var xMin = firstPoint < yearStart ? firstPoint : yearStart;
+        var xMax = lastPoint <= xMin ? xMin.AddDays(1) : lastPoint;
+        var yMax = GetNiceAxisMaximum(allPoints.Max(point => point.TotalKilometers));
+        var leaderTotal = chart.Athletes
+            .Select(series => series.Points.OrderBy(point => point.RecordedAt).Last().TotalKilometers)
+            .Max();
+
+        var renderedSeries = chart.Athletes
+            .Select(series => BuildRenderedSeries(series, xMin, xMax, yMax))
+            .Where(series => !string.IsNullOrWhiteSpace(series.PolylinePoints))
+            .ToArray();
+
+        var endpoints = renderedSeries
+            .Select(series => BuildEndpoint(series, leaderTotal))
+            .OrderBy(endpoint => endpoint.Y)
+            .ToArray();
+        endpoints = AdjustEndpointLabels(endpoints);
+
+        return new TrendChartGeometry(
+            renderedSeries,
+            endpoints,
+            BuildYTicks(yMax),
+            BuildXTicks(xMin, xMax),
+            leaderTotal);
+    }
+
+    private static RenderedTrendSeries BuildRenderedSeries(
+        AthleteTrendSeries source,
+        DateTimeOffset xMin,
+        DateTimeOffset xMax,
+        double yMax)
+    {
+        var renderedPoints = source.Points
+            .OrderBy(point => point.RecordedAt)
+            .Select(point => new RenderedTrendPoint(
+                point,
+                MapX(point.RecordedAt, xMin, xMax),
+                MapY(point.TotalKilometers, yMax)))
+            .ToArray();
+        var polylinePoints = string.Join(
+            " ",
+            renderedPoints.Select(point => $"{FormatSvgNumber(point.X)},{FormatSvgNumber(point.Y)}"));
+
+        return new RenderedTrendSeries(source, renderedPoints, polylinePoints);
+    }
+
+    private static RenderedEndpoint BuildEndpoint(RenderedTrendSeries series, double leaderTotal)
+    {
+        var latestPoint = series.Points.Last();
+        var gapKilometers = latestPoint.Point.TotalKilometers - leaderTotal;
+        var isLeader = Math.Abs(gapKilometers) < 0.05d;
+
+        return new RenderedEndpoint(
+            series.Source,
+            latestPoint.Point,
+            latestPoint.X,
+            latestPoint.Y,
+            latestPoint.Y,
+            isLeader,
+            gapKilometers);
+    }
+
+    private static RenderedEndpoint[] AdjustEndpointLabels(RenderedEndpoint[] endpoints)
+    {
+        const double minimumGap = 18d;
+        const double topLimit = PlotTop + 10d;
+        const double bottomLimit = PlotBottomY - 8d;
+        var adjusted = new RenderedEndpoint[endpoints.Length];
+        var nextLabelY = topLimit;
+
+        for (var index = 0; index < endpoints.Length; index++)
+        {
+            var endpoint = endpoints[index];
+            var labelY = Math.Clamp(endpoint.LabelY, nextLabelY, bottomLimit);
+            adjusted[index] = endpoint with { LabelY = labelY };
+            nextLabelY = labelY + minimumGap;
+        }
+
+        for (var index = adjusted.Length - 2; index >= 0; index--)
+        {
+            var current = adjusted[index];
+            var next = adjusted[index + 1];
+            if (current.LabelY + minimumGap <= next.LabelY)
+            {
+                continue;
+            }
+
+            adjusted[index] = current with { LabelY = Math.Max(topLimit, next.LabelY - minimumGap) };
+        }
+
+        return adjusted;
+    }
+
+    private static IReadOnlyList<ChartYTick> BuildYTicks(double yMax)
+    {
+        const int tickCount = 5;
+        return Enumerable.Range(0, tickCount)
+            .Select(index =>
+            {
+                var value = yMax * index / (tickCount - 1);
+                return new ChartYTick(value, MapY(value, yMax));
+            })
+            .ToArray();
+    }
+
+    private static IReadOnlyList<ChartXTick> BuildXTicks(DateTimeOffset xMin, DateTimeOffset xMax)
+    {
+        const int tickCount = 5;
+        var minSeconds = xMin.ToUnixTimeSeconds();
+        var maxSeconds = xMax.ToUnixTimeSeconds();
+        var spanSeconds = Math.Max(1, maxSeconds - minSeconds);
+
+        return Enumerable.Range(0, tickCount)
+            .Select(index =>
+            {
+                var seconds = minSeconds + (long)Math.Round(spanSeconds * index / (double)(tickCount - 1));
+                var date = DateTimeOffset.FromUnixTimeSeconds(seconds).ToLocalTime();
+                return new ChartXTick(
+                    MapX(DateTimeOffset.FromUnixTimeSeconds(seconds), xMin, xMax),
+                    date.ToString("MMM d", CultureInfo.CurrentCulture));
+            })
+            .ToArray();
+    }
+
+    private static double MapX(DateTimeOffset value, DateTimeOffset xMin, DateTimeOffset xMax)
+    {
+        var minSeconds = xMin.ToUnixTimeSeconds();
+        var maxSeconds = xMax.ToUnixTimeSeconds();
+        var valueSeconds = value.ToUnixTimeSeconds();
+        var ratio = (valueSeconds - minSeconds) / (double)Math.Max(1, maxSeconds - minSeconds);
+
+        return PlotLeft + ratio * PlotWidth;
+    }
+
+    private static double MapY(double value, double yMax)
+    {
+        var ratio = yMax <= 0d ? 0d : value / yMax;
+        return PlotBottomY - ratio * PlotHeight;
+    }
+
+    private static double GetNiceAxisMaximum(double maxValue)
+    {
+        if (maxValue <= 0d)
+        {
+            return 10d;
+        }
+
+        var magnitude = Math.Pow(10d, Math.Floor(Math.Log10(maxValue)));
+        foreach (var step in new[] { 1d, 2d, 5d, 10d })
+        {
+            var candidate = step * magnitude;
+            if (candidate >= maxValue)
+            {
+                return candidate;
+            }
+        }
+
+        return 10d * magnitude;
+    }
+
+    private static string GetLeaderSummary(TrendChartGeometry geometry)
+    {
+        var leader = geometry.Endpoints
+            .Where(endpoint => endpoint.IsLeader)
+            .OrderBy(endpoint => endpoint.Source.AthleteName, StringComparer.CurrentCultureIgnoreCase)
+            .First();
+
+        return $"{AthleteDisplayNameFormatter.GetFirstName(leader.Source.AthleteName)} leads with {FormatDistance(leader.Point.TotalKilometers)}";
+    }
+
+    private static string GetEndpointLabel(RenderedEndpoint endpoint)
+    {
+        return GetAthleteInitial(endpoint.Source.AthleteName);
+    }
+
+    private static string GetAthleteInitial(string athleteName)
+    {
+        var firstName = AthleteDisplayNameFormatter.GetFirstName(athleteName);
+        if (string.IsNullOrWhiteSpace(firstName))
+        {
+            return "?";
+        }
+
+        return StringInfo.GetNextTextElement(firstName).ToUpper(CultureInfo.CurrentCulture);
+    }
+
+    private static string GetEndpointLabelClass(RenderedEndpoint endpoint)
+    {
+        return endpoint.IsLeader
+            ? "trend-endpoint-label trend-endpoint-label-leader"
+            : "trend-endpoint-label";
+    }
+
+    private static string FormatDistance(double kilometers)
+    {
+        return $"{kilometers:N1} km";
+    }
+
+    private static string FormatSignedDistance(double kilometers)
+    {
+        return $"{kilometers:+0.0;-0.0;0.0} km";
+    }
+
+    private static string FormatAxisKilometers(double kilometers)
+    {
+        return $"{kilometers:N0}";
+    }
+
+    private static string FormatSvgNumber(double value)
+    {
+        return value.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
+    private static MarkupString SvgText(
+        string className,
+        double x,
+        double y,
+        string text,
+        string? textAnchor = null,
+        string? fill = null)
+    {
+        var attributes = $" class=\"{EncodeAttribute(className)}\" x=\"{FormatSvgNumber(x)}\" y=\"{FormatSvgNumber(y)}\"";
+        if (!string.IsNullOrWhiteSpace(textAnchor))
+        {
+            attributes += $" text-anchor=\"{EncodeAttribute(textAnchor)}\"";
+        }
+
+        if (!string.IsNullOrWhiteSpace(fill))
+        {
+            attributes += $" fill=\"{EncodeAttribute(fill)}\"";
+        }
+
+        return new MarkupString($"<text{attributes}>{HtmlEncoder.Default.Encode(text)}</text>");
+    }
+
+    private static string EncodeAttribute(string value)
+    {
+        return HtmlEncoder.Default.Encode(value);
+    }
+
+    private sealed record TrendChartGeometry(
+        IReadOnlyList<RenderedTrendSeries> Series,
+        IReadOnlyList<RenderedEndpoint> Endpoints,
+        IReadOnlyList<ChartYTick> YTicks,
+        IReadOnlyList<ChartXTick> XTicks,
+        double LeaderTotalKilometers);
+
+    private sealed record RenderedTrendSeries(
+        AthleteTrendSeries Source,
+        IReadOnlyList<RenderedTrendPoint> Points,
+        string PolylinePoints);
+
+    private sealed record RenderedTrendPoint(
+        AthleteTrendPoint Point,
+        double X,
+        double Y);
+
+    private sealed record RenderedEndpoint(
+        AthleteTrendSeries Source,
+        AthleteTrendPoint Point,
+        double X,
+        double Y,
+        double LabelY,
+        bool IsLeader,
+        double GapKilometers);
+
+    private sealed record ChartYTick(double Value, double Y);
+
+    private sealed record ChartXTick(double X, string Label);
+}

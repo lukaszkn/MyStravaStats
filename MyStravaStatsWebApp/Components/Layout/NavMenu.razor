@@ -24,10 +24,28 @@
                 </NavLink>
             </div>
         }
+
+        @if (IsTrendChartNavEnabled)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="trend">
+                    <span class="bi bi-graph-up-nav-menu" aria-hidden="true"></span> Trend
+                </NavLink>
+            </div>
+        }
     </nav>
 </div>
 
 @code {
     private bool IsCounterNavEnabled => string.Equals(Configuration["ENABLE_COUNTER_BECKI_NAV"], "1", StringComparison.Ordinal);
-}
 
+    private bool IsTrendChartNavEnabled => IsEnabled(Configuration["ENABLE_TREND_CHART"]);
+
+    private static bool IsEnabled(string? value)
+    {
+        var normalizedValue = value?.Trim();
+        return string.Equals(normalizedValue, "1", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalizedValue, "true", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalizedValue, "yes", StringComparison.OrdinalIgnoreCase);
+    }
+}
