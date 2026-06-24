@@ -1,5 +1,6 @@
 @page "/trend"
 @attribute [StreamRendering]
+@rendermode InteractiveServer
 @using System.Globalization
 @using System.Text.Encodings.Web
 @using Microsoft.AspNetCore.Components
@@ -39,7 +40,11 @@ else
         }
         else
         {
-            var geometry = BuildChartGeometry(trendChart);
+            var rangeStart = GetTrendRangeStart(trendChart, selectedTrendRange);
+            var filteredTrendChart = FilterTrendChart(trendChart, rangeStart);
+            var geometry = filteredTrendChart.Athletes.Count == 0
+                ? null
+                : BuildChartGeometry(filteredTrendChart, rangeStart);
 
             <section class="trend-card card shadow-sm border-0">
                 <div class="card-body p-4">
@@ -52,59 +57,82 @@ else
                             </p>
                         </div>
 
-                        <div class="trend-leader-badge">
-                            @GetLeaderSummary(geometry)
+                        <div class="trend-toolbar">
+                            <div class="trend-filter">
+                                <label class="form-label mb-1" for="trendRangeFilter">Filter</label>
+                                <select id="trendRangeFilter" class="form-select form-select-sm" @bind="selectedTrendRange">
+                                    <option value="@TrendChartRange.Full">full</option>
+                                    <option value="@TrendChartRange.LastMonth">last 1 month</option>
+                                    <option value="@TrendChartRange.LastTwoMonths">last 2 months</option>
+                                </select>
+                            </div>
+
+                            @if (geometry is not null)
+                            {
+                                <div class="trend-leader-badge">
+                                    @GetLeaderSummary(geometry)
+                                </div>
+                            }
                         </div>
                     </div>
 
-                    <div class="trend-chart-wrap">
-                        <svg class="trend-chart" viewBox="0 0 @ChartWidth @ChartHeight" role="img" aria-labelledby="trendChartTitle trendChartDescription">
-                            <title id="trendChartTitle">Athlete cumulative distance trend</title>
-                            <desc id="trendChartDescription">Line chart showing total kilometers over time for each athlete.</desc>
+                    @if (geometry is null)
+                    {
+                        <div class="alert alert-secondary mb-0" role="alert">
+                            No daily trend points were found for the selected filter.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="trend-chart-wrap">
+                            <svg class="trend-chart" viewBox="0 0 @ChartWidth @ChartHeight" role="img" aria-labelledby="trendChartTitle trendChartDescription">
+                                <title id="trendChartTitle">Athlete cumulative distance trend</title>
+                                <desc id="trendChartDescription">Line chart showing total kilometers over time for each athlete.</desc>
 
-                            <line class="trend-axis" x1="@PlotLeft" y1="@PlotBottomY" x2="@PlotRightX" y2="@PlotBottomY" />
-                            <line class="trend-axis" x1="@PlotLeft" y1="@PlotTop" x2="@PlotLeft" y2="@PlotBottomY" />
+                                <line class="trend-axis" x1="@PlotLeft" y1="@PlotBottomY" x2="@PlotRightX" y2="@PlotBottomY" />
+                                <line class="trend-axis" x1="@PlotLeft" y1="@PlotTop" x2="@PlotLeft" y2="@PlotBottomY" />
 
-                            @foreach (var tick in geometry.YTicks)
-                            {
-                                <line class="trend-grid-line" x1="@PlotLeft" y1="@FormatSvgNumber(tick.Y)" x2="@PlotRightX" y2="@FormatSvgNumber(tick.Y)" />
-                                @SvgText("trend-axis-label trend-y-label", PlotLeft - 12, tick.Y + 4, FormatAxisKilometers(tick.Value), textAnchor: "end")
-                            }
-
-                            @foreach (var tick in geometry.XTicks)
-                            {
-                                <line class="trend-x-tick" x1="@FormatSvgNumber(tick.X)" y1="@PlotBottomY" x2="@FormatSvgNumber(tick.X)" y2="@(PlotBottomY + 6)" />
-                                @SvgText("trend-axis-label", tick.X, PlotBottomY + 26, tick.Label, textAnchor: "middle")
-                            }
-
-                            @foreach (var series in geometry.Series)
-                            {
-                                <polyline class="trend-line" points="@series.PolylinePoints" fill="none" stroke="@series.Source.Color" />
-                            }
-
-                            @foreach (var endpoint in geometry.Endpoints)
-                            {
-                                <line class="trend-endpoint-guide" x1="@FormatSvgNumber(endpoint.X)" y1="@FormatSvgNumber(endpoint.Y)" x2="@(PlotRightX + 8)" y2="@FormatSvgNumber(endpoint.LabelY)" stroke="@endpoint.Source.Color" />
-                                <circle class="trend-endpoint-marker" cx="@FormatSvgNumber(endpoint.X)" cy="@FormatSvgNumber(endpoint.Y)" r="4.5" fill="@endpoint.Source.Color" />
-                                @SvgText(GetEndpointLabelClass(endpoint), PlotRightX + 12, endpoint.LabelY + 4, GetEndpointLabel(endpoint), fill: endpoint.Source.Color)
-                            }
-                        </svg>
-                    </div>
-
-                    <div class="trend-legend" aria-label="Athlete trend totals">
-                        @foreach (var endpoint in geometry.Endpoints.OrderByDescending(endpoint => endpoint.Point.TotalKilometers))
-                        {
-                            <div class="trend-legend-item" style="@($"--trend-color: {endpoint.Source.Color}")">
-                                <span class="trend-legend-swatch" aria-hidden="true"></span>
-                                <span class="trend-legend-name">@AthleteDisplayNameFormatter.GetFirstName(endpoint.Source.AthleteName)</span>
-                                <span class="trend-legend-total">@FormatDistance(endpoint.Point.TotalKilometers)</span>
-                                @if (!endpoint.IsLeader)
+                                @foreach (var tick in geometry.YTicks)
                                 {
-                                    <span class="trend-legend-gap">@FormatSignedDistance(endpoint.GapKilometers)</span>
+                                    <line class="trend-grid-line" x1="@PlotLeft" y1="@FormatSvgNumber(tick.Y)" x2="@PlotRightX" y2="@FormatSvgNumber(tick.Y)" />
+                                    @SvgText("trend-axis-label trend-y-label", PlotLeft - 12, tick.Y + 4, FormatAxisKilometers(tick.Value), textAnchor: "end")
                                 }
-                            </div>
-                        }
-                    </div>
+
+                                @foreach (var tick in geometry.XTicks)
+                                {
+                                    <line class="trend-x-tick" x1="@FormatSvgNumber(tick.X)" y1="@PlotBottomY" x2="@FormatSvgNumber(tick.X)" y2="@(PlotBottomY + 6)" />
+                                    @SvgText("trend-axis-label", tick.X, PlotBottomY + 26, tick.Label, textAnchor: "middle")
+                                }
+
+                                @foreach (var series in geometry.Series)
+                                {
+                                    <polyline class="trend-line" points="@series.PolylinePoints" fill="none" stroke="@series.Source.Color" />
+                                }
+
+                                @foreach (var endpoint in geometry.Endpoints)
+                                {
+                                    <line class="trend-endpoint-guide" x1="@FormatSvgNumber(endpoint.X)" y1="@FormatSvgNumber(endpoint.Y)" x2="@(PlotRightX + 8)" y2="@FormatSvgNumber(endpoint.LabelY)" stroke="@endpoint.Source.Color" />
+                                    <circle class="trend-endpoint-marker" cx="@FormatSvgNumber(endpoint.X)" cy="@FormatSvgNumber(endpoint.Y)" r="4.5" fill="@endpoint.Source.Color" />
+                                    @SvgText(GetEndpointLabelClass(endpoint), PlotRightX + 12, endpoint.LabelY + 4, GetEndpointLabel(endpoint), fill: endpoint.Source.Color)
+                                }
+                            </svg>
+                        </div>
+
+                        <div class="trend-legend" aria-label="Athlete trend totals">
+                            @foreach (var endpoint in geometry.Endpoints.OrderByDescending(endpoint => endpoint.Point.TotalKilometers))
+                            {
+                                <div class="trend-legend-item" style="@($"--trend-color: {endpoint.Source.Color}")">
+                                    <span class="trend-legend-swatch" aria-hidden="true"></span>
+                                    <span class="trend-legend-name">@AthleteDisplayNameFormatter.GetFirstName(endpoint.Source.AthleteName)</span>
+                                    <span class="trend-legend-total">@FormatDistance(endpoint.Point.TotalKilometers)</span>
+                                    @if (!endpoint.IsLeader)
+                                    {
+                                        <span class="trend-legend-gap">@FormatSignedDistance(endpoint.GapKilometers)</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
             </section>
         }
@@ -122,8 +150,10 @@ else
     private const int PlotBottomY = ChartHeight - PlotBottom;
     private const int PlotWidth = ChartWidth - PlotLeft - PlotRight;
     private const int PlotHeight = ChartHeight - PlotTop - PlotBottom;
+    private const double AxisGranularityKilometers = 500d;
 
     private AthleteTrendChart? trendChart;
+    private TrendChartRange selectedTrendRange = TrendChartRange.Full;
 
     protected override async Task OnInitializedAsync()
     {
@@ -132,7 +162,7 @@ else
             HttpContextAccessor.HttpContext?.RequestAborted ?? CancellationToken.None);
     }
 
-    private static TrendChartGeometry BuildChartGeometry(AthleteTrendChart chart)
+    private static TrendChartGeometry BuildChartGeometry(AthleteTrendChart chart, DateTimeOffset? rangeStart)
     {
         var allPoints = chart.Athletes
             .SelectMany(series => series.Points)
@@ -140,15 +170,20 @@ else
         var firstPoint = allPoints.Min(point => point.RecordedAt);
         var lastPoint = allPoints.Max(point => point.RecordedAt);
         var yearStart = new DateTimeOffset(chart.Year, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        var xMin = firstPoint < yearStart ? firstPoint : yearStart;
+        var xMin = rangeStart ?? (firstPoint < yearStart ? firstPoint : yearStart);
         var xMax = lastPoint <= xMin ? xMin.AddDays(1) : lastPoint;
-        var yMax = GetNiceAxisMaximum(allPoints.Max(point => point.TotalKilometers));
+        var yMin = GetAxisMinimum(allPoints.Min(point => point.TotalKilometers));
+        var yMax = GetAxisMaximum(allPoints.Max(point => point.TotalKilometers));
+        if (yMax <= yMin)
+        {
+            yMax = yMin + AxisGranularityKilometers;
+        }
         var leaderTotal = chart.Athletes
             .Select(series => series.Points.OrderBy(point => point.RecordedAt).Last().TotalKilometers)
             .Max();
 
         var renderedSeries = chart.Athletes
-            .Select(series => BuildRenderedSeries(series, xMin, xMax, yMax))
+            .Select(series => BuildRenderedSeries(series, xMin, xMax, yMin, yMax))
             .Where(series => !string.IsNullOrWhiteSpace(series.PolylinePoints))
             .ToArray();
 
@@ -161,15 +196,95 @@ else
         return new TrendChartGeometry(
             renderedSeries,
             endpoints,
-            BuildYTicks(yMax),
+            BuildYTicks(yMin, yMax),
             BuildXTicks(xMin, xMax),
             leaderTotal);
+    }
+
+    private static DateTimeOffset? GetTrendRangeStart(AthleteTrendChart chart, TrendChartRange range)
+    {
+        var monthCount = range switch
+        {
+            TrendChartRange.Full => 0,
+            TrendChartRange.LastMonth => 1,
+            TrendChartRange.LastTwoMonths => 2,
+            _ => 0
+        };
+        if (monthCount == 0)
+        {
+            return null;
+        }
+
+        DateTimeOffset? latestRecordedAt = null;
+        foreach (var point in chart.Athletes.SelectMany(series => series.Points))
+        {
+            if (latestRecordedAt is null || point.RecordedAt > latestRecordedAt.Value)
+            {
+                latestRecordedAt = point.RecordedAt;
+            }
+        }
+
+        return latestRecordedAt?.AddMonths(-monthCount);
+    }
+
+    private static AthleteTrendChart FilterTrendChart(AthleteTrendChart chart, DateTimeOffset? rangeStart)
+    {
+        if (rangeStart is null)
+        {
+            return chart;
+        }
+
+        var filteredAthletes = chart.Athletes
+            .Select(series => FilterTrendSeries(series, rangeStart.Value))
+            .Where(series => series.Points.Count > 0)
+            .ToArray();
+
+        return new AthleteTrendChart
+        {
+            IsConfigured = chart.IsConfigured,
+            Year = chart.Year,
+            ErrorMessage = chart.ErrorMessage,
+            Athletes = filteredAthletes
+        };
+    }
+
+    private static AthleteTrendSeries FilterTrendSeries(AthleteTrendSeries series, DateTimeOffset rangeStart)
+    {
+        var orderedPoints = series.Points
+            .OrderBy(point => point.RecordedAt)
+            .ToArray();
+        var filteredPoints = orderedPoints
+            .Where(point => point.RecordedAt >= rangeStart)
+            .ToList();
+        var previousPoint = orderedPoints
+            .Where(point => point.RecordedAt < rangeStart)
+            .LastOrDefault();
+
+        if (previousPoint is not null)
+        {
+            // Carry the pre-window cumulative total forward so inactive athletes remain visible.
+            filteredPoints.Insert(0, new AthleteTrendPoint
+            {
+                RecordedAt = rangeStart,
+                TotalKilometers = previousPoint.TotalKilometers
+            });
+        }
+
+        return new AthleteTrendSeries
+        {
+            AthleteId = series.AthleteId,
+            AthleteName = series.AthleteName,
+            GeneratedAtUtc = series.GeneratedAtUtc,
+            Color = series.Color,
+            Points = filteredPoints
+        };
     }
 
     private static RenderedTrendSeries BuildRenderedSeries(
         AthleteTrendSeries source,
         DateTimeOffset xMin,
         DateTimeOffset xMax,
+        double yMin,
         double yMax)
     {
         var renderedPoints = source.Points
@@ -177,7 +292,7 @@ else
             .Select(point => new RenderedTrendPoint(
                 point,
                 MapX(point.RecordedAt, xMin, xMax),
-                MapY(point.TotalKilometers, yMax)))
+                MapY(point.TotalKilometers, yMin, yMax)))
             .ToArray();
         var polylinePoints = string.Join(
             " ",
@@ -233,14 +348,14 @@ else
         return adjusted;
     }
 
-    private static IReadOnlyList<ChartYTick> BuildYTicks(double yMax)
+    private static IReadOnlyList<ChartYTick> BuildYTicks(double yMin, double yMax)
     {
-        const int tickCount = 5;
-        return Enumerable.Range(0, tickCount)
+        var tickCount = (int)Math.Round((yMax - yMin) / AxisGranularityKilometers) + 1;
+        return Enumerable.Range(0, Math.Max(2, tickCount))
             .Select(index =>
             {
-                var value = yMax * index / (tickCount - 1);
-                return new ChartYTick(value, MapY(value, yMax));
+                var value = yMin + AxisGranularityKilometers * index;
+                return new ChartYTick(value, MapY(value, yMin, yMax));
             })
             .ToArray();
     }
@@ -274,30 +389,32 @@ else
         return PlotLeft + ratio * PlotWidth;
     }
 
-    private static double MapY(double value, double yMax)
+    private static double MapY(double value, double yMin, double yMax)
     {
-        var ratio = yMax <= 0d ? 0d : value / yMax;
+        var span = yMax - yMin;
+        var ratio = span <= 0d ? 0d : (value - yMin) / span;
+        ratio = Math.Clamp(ratio, 0d, 1d);
         return PlotBottomY - ratio * PlotHeight;
     }
 
-    private static double GetNiceAxisMaximum(double maxValue)
+    private static double GetAxisMinimum(double minValue)
+    {
+        if (minValue <= 0d)
+        {
+            return 0d;
+        }
+
+        return Math.Floor(minValue / AxisGranularityKilometers) * AxisGranularityKilometers;
+    }
+
+    private static double GetAxisMaximum(double maxValue)
     {
         if (maxValue <= 0d)
         {
-            return 10d;
+            return AxisGranularityKilometers;
         }
 
-        var magnitude = Math.Pow(10d, Math.Floor(Math.Log10(maxValue)));
-        foreach (var step in new[] { 1d, 2d, 5d, 10d })
-        {
-            var candidate = step * magnitude;
-            if (candidate >= maxValue)
-            {
-                return candidate;
-            }
-        }
-
-        return 10d * magnitude;
+        return Math.Ceiling(maxValue / AxisGranularityKilometers) * AxisGranularityKilometers;
     }
 
     private static string GetLeaderSummary(TrendChartGeometry geometry)
@@ -409,4 +526,11 @@ else
     private sealed record ChartYTick(double Value, double Y);
 
     private sealed record ChartXTick(double X, string Label);
+
+    private enum TrendChartRange
+    {
+        Full,
+        LastMonth,
+        LastTwoMonths
+    }
 }

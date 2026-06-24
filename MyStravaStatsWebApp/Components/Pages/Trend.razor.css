@@ -20,6 +20,18 @@
     font-variant-numeric: tabular-nums;
 }
 
+.trend-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+.trend-filter {
+    min-width: 9.5rem;
+}
+
 .trend-chart-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -126,7 +138,17 @@
 }
 
 @media (max-width: 767.98px) {
+    .trend-toolbar,
+    .trend-filter {
+        width: 100%;
+    }
+
+    .trend-toolbar {
+        justify-content: stretch;
+    }
+
     .trend-leader-badge {
+        width: 100%;
         border-radius: 1rem;
     }
 
